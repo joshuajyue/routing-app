@@ -1,17 +1,17 @@
 # Open decisions
 
-No application code should be scaffolded until the P0 decisions are accepted or
-revised.
+The current UI prototype implements the accepted P0 composition model with
+simulated clients. Remaining decisions apply to wiring the real routing APIs.
 
 ## P0 decisions
 
 | Decision | Recommended default | Reason |
 | --- | --- | --- |
-| UX model | A guided build step followed by a focused chat/debug screen | Matches the demo narrative while still separating composable selection, resilience, and route configuration |
+| UX model | A guided build step with an interactive client tree, followed by a focused chat/debug screen | Makes nested `IChatClient` composition explicit without becoming a free-form workflow editor |
 | Initial host | .NET 10 Blazor Web App with Interactive Server rendering | Keeps `IChatClient`, streaming, and credentials server-side in a mostly C# sample |
 | Default execution | Deterministic simulated models and embeddings | Makes the demo reliable, free to run, and able to reproduce exact failure boundaries |
 | Live provider scope | OpenAI only, with a curated model catalog plus custom ID | Matches the initial concept without pretending model discovery or capability metadata is universal |
-| Core presets | Callback, semantic, built-in ordered failover, semantic plus failover, observable failover, cooldown failover, and reasoning-level routing | Covers all built-in types and makes the stateful failover extension point tangible |
+| Core presets | Semantic route families, semantic over ordered chains, callback routing, cooldown failover, outer emergency fallback, and reasoning-level routing | Covers both composition directions: resilience inside selected families and fallback outside the selector |
 | Exact attempt telemetry | Add a custom observable ordered policy derived from `FailoverChatClient` | `OrderedFailoverChatClient` is sealed and does not publish its protected attempt hook |
 | Model availability controls | Support fail-next, timed kill, down-until-revived, and revive | Enables repeatable comparison of static ordered failover and stateful cooldown behavior |
 | Initial cooldown policy | Fixed 30-second cooldown, half-open on the next request, and immediate error when every route is ineligible | Easy to explain and deterministic before adding production-style backoff rules |

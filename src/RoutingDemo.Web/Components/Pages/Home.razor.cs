@@ -10,56 +10,56 @@ public partial class Home
 {
     private static readonly (string Title, string Subtitle)[] BuilderSteps =
     [
-        ("Scenario", "Choose a starting point"),
-        ("Policies", "Compose routing behavior"),
-        ("Routes", "Configure model clients"),
+        ("Scenario", "Choose a starting tree"),
+        ("Outer shape", "Set selection and escape hatch"),
+        ("Compose", "Edit the interactive tree"),
         ("Review", "Build the pipeline"),
     ];
 
     private static readonly ScenarioDefinition[] Scenarios =
     [
         new(
-            "semantic-failover",
+            "semantic-composition",
             "Best full demo",
-            "Semantic plus failover",
-            "Route by intent, then move to a fallback when the selected specialist is unavailable.",
+            "Semantic route families",
+            "Semantic profiles select stable family clients; each family owns its own ordered, cooldown, or single-model target.",
             "Semantic",
-            "Ordered failover"),
+            "Per-family resilience"),
         new(
-            "ordered",
-            "Built-in resilience",
-            "Ordered failover",
-            "Walk a fixed list of model clients and expose the pre-output retry boundary.",
-            "Direct",
-            "Ordered failover"),
+            "semantic-ordered",
+            "Built-in composition",
+            "Semantic over ordered chains",
+            "Every semantic profile targets an OrderedFailoverChatClient containing category-compatible models.",
+            "Semantic",
+            "Ordered per profile"),
         new(
             "cooldown",
             "Custom policy",
-            "Cooldown failover",
-            "Remember failures across requests, skip cooling routes, and probe them after recovery.",
+            "Cooldown route family",
+            "One route family remembers failures across requests and skips cooling model clients.",
             "Direct",
-            "Cooldown"),
+            "Cooldown chain"),
         new(
             "reasoning",
             "Option shaping",
-            "Reasoning levels",
-            "Route between low- and high-reasoning wrappers over the same underlying model.",
+            "Reasoning-level families",
+            "A callback chooses a routine or deep route family built from configured wrappers over the same model.",
             "Callback",
-            "Ordered failover"),
+            "Configured clients"),
     ];
 
     private static readonly (string Value, string Label, string Description)[] SelectionOptions =
     [
-        ("Semantic", "Semantic routing", "Match the latest user message against route examples."),
-        ("Callback", "Callback routing", "Use request shape and complexity in RoutingChatClient.Create."),
-        ("None", "Direct", "Start from the first configured route without classification."),
+        ("Semantic", "Semantic routing", "Select a route family from example utterances."),
+        ("Callback", "Callback routing", "Select a family from request shape and complexity."),
+        ("None", "Direct", "Always select the first configured route family."),
     ];
 
     private static readonly (string Value, string Label, string Description)[] ResilienceOptions =
     [
-        ("Ordered", "Ordered failover", "Try clients in a fixed order after pre-output failure."),
-        ("Cooldown", "Cooldown failover", "Remember failures and skip unhealthy clients across requests."),
-        ("None", "No failover", "Invoke only the selected route and surface its result."),
+        ("None", "Single", "Invoke the first configured model client only."),
+        ("Ordered", "Ordered", "Try model clients in a fixed order after pre-output failure."),
+        ("Cooldown", "Cooldown", "Remember failures and skip unhealthy model clients across requests."),
     ];
 
     private static readonly string[] ModelOptions =
@@ -76,7 +76,7 @@ public partial class Home
     [
         "Refactor this C# service to use dependency injection",
         "Write a short launch announcement for a developer tool",
-        "Explain when streaming failover becomes terminal",
+        "Explain how semantic routing composes with cooldown failover",
     ];
 
     private static readonly string[] DebugTabs = ["Summary", "Attempts", "Options"];
@@ -110,27 +110,41 @@ public partial class Home
 
     private string SessionId { get; set; } = CreateSessionId();
 
+    private string SelectedNodeKey { get; set; } = "selector";
+
+    private RouteFamilyDefinition? SelectedFamily => ResolveSelectedFamily();
+
+    private RouteFamilyDefinition? SelectedRouteFamily => ResolveSelectedRouteFamily();
+
+    private RouteDefinition? SelectedRoute => ResolveSelectedRoute();
+
     private bool CanAdvance => CurrentStep switch
     {
         0 => Scenarios.Any(scenario => scenario.Id == Draft.ScenarioId),
-        1 => !string.IsNullOrWhiteSpace(Draft.SelectionPolicy) &&
-             !string.IsNullOrWhiteSpace(Draft.ResiliencePolicy),
-        2 => HasValidRoutes(),
+        1 => !string.IsNullOrWhiteSpace(Draft.SelectionPolicy),
+        2 => HasValidTree(),
         _ => CanBuild,
     };
 
     private bool CanBuild =>
-        HasValidRoutes() &&
-        Draft.Routes.Select(route => route.Name.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count() ==
-        Draft.Routes.Count &&
+        HasValidTree() &&
+        (!Draft.GlobalFallbackEnabled ||
+         (!string.IsNullOrWhiteSpace(Draft.GlobalFallback.Name) &&
+          !string.IsNullOrWhiteSpace(Draft.GlobalFallback.ModelId))) &&
+        Draft.Families.Select(family => family.Name.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count() == Draft.Families.Count &&
+        Draft.AllRoutes().Select(route => route.Name.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count() == Draft.AllRoutes().Count() &&
         (Draft.SelectionPolicy != "Semantic" ||
-         (Draft.Routes.Count(route => route.IsDefault) == 1 &&
-          Draft.Routes.Where(route => !route.IsDefault)
-              .All(route => !string.IsNullOrWhiteSpace(route.ProfileExamples))));
+         (Draft.Families.Count(family => family.IsDefault) == 1 &&
+          Draft.Families.Where(family => !family.IsDefault)
+              .All(family => !string.IsNullOrWhiteSpace(family.ProfileExamples))));
 
     protected override void OnInitialized()
     {
-        SelectScenario("semantic-failover");
+        SelectScenario("semantic-composition");
         _clockTask = RunClockAsync(_lifetimeCancellation.Token);
     }
 
@@ -149,11 +163,37 @@ public partial class Home
     {
         Draft = scenarioId switch
         {
-            "ordered" => CreateOrderedScenario(),
+            "semantic-ordered" => CreateSemanticOrderedScenario(),
             "cooldown" => CreateCooldownScenario(),
             "reasoning" => CreateReasoningScenario(),
-            _ => CreateSemanticFailoverScenario(),
+            _ => CreateSemanticCompositionScenario(),
         };
+        SelectedNodeKey = "selector";
+    }
+
+    private void SetSelectionPolicy(string policy)
+    {
+        Draft.SelectionPolicy = policy;
+        if (policy == "Semantic" && Draft.Families.All(family => !family.IsDefault))
+        {
+            Draft.Families[^1].IsDefault = true;
+        }
+    }
+
+    private void OnSelectionChanged(ChangeEventArgs eventArgs) =>
+        SetSelectionPolicy(eventArgs.Value?.ToString() ?? "Semantic");
+
+    private void SetGlobalFallback(bool enabled)
+    {
+        Draft.GlobalFallbackEnabled = enabled;
+        if (enabled)
+        {
+            SelectedNodeKey = $"global:{Draft.GlobalFallback.Id}";
+        }
+        else if (SelectedNodeKey.StartsWith("global:", StringComparison.Ordinal))
+        {
+            SelectedNodeKey = "selector";
+        }
     }
 
     private void GoToStep(int step)
@@ -177,57 +217,280 @@ public partial class Home
         if (CanAdvance && CurrentStep < BuilderSteps.Length - 1)
         {
             CurrentStep++;
+            if (CurrentStep == 2)
+            {
+                SelectedNodeKey = "selector";
+            }
         }
     }
 
-    private void AddRoute()
+    private void AddFamily()
     {
-        int routeNumber = Draft.Routes.Count + 1;
-        Draft.Routes.Add(CreateRoute(
-            $"route-{routeNumber}",
-            "General",
-            "gpt-5.4",
-            "medium",
-            0.3,
-            "Be concise and helpful.",
-            "general questions, everyday help"));
+        int familyNumber = Draft.Families.Count + 1;
+        var family = CreateFamily(
+            $"family-{familyNumber}",
+            "Custom route family",
+            "custom requests, specialized help",
+            "None",
+            [
+                CreateRoute(
+                    $"family-{familyNumber}-primary",
+                    "Primary",
+                    "gpt-5.4",
+                    "medium",
+                    0.3,
+                    "Be concise and helpful."),
+            ]);
+        Draft.Families.Add(family);
+        SelectedNodeKey = $"family:{family.Id}";
     }
 
-    private void RemoveRoute(RouteDefinition route)
+    private void RemoveFamily(RouteFamilyDefinition family)
     {
-        if (Draft.Routes.Count <= 2)
+        if (Draft.Families.Count <= 1)
         {
             return;
         }
 
-        bool removedDefault = route.IsDefault;
-        Draft.Routes.Remove(route);
+        bool removedDefault = family.IsDefault;
+        Draft.Families.Remove(family);
         if (removedDefault)
         {
-            Draft.Routes[^1].IsDefault = true;
+            Draft.Families[^1].IsDefault = true;
         }
+
+        SelectedNodeKey = $"family:{Draft.Families[0].Id}";
     }
 
-    private void MoveRoute(int index, int offset)
+    private void MoveFamily(RouteFamilyDefinition family, int offset)
     {
+        int index = Draft.Families.IndexOf(family);
         int target = index + offset;
-        if (index < 0 || index >= Draft.Routes.Count || target < 0 || target >= Draft.Routes.Count)
+        if (index < 0 || target < 0 || target >= Draft.Families.Count)
         {
             return;
         }
 
-        RouteDefinition route = Draft.Routes[index];
-        Draft.Routes.RemoveAt(index);
-        Draft.Routes.Insert(target, route);
+        Draft.Families.RemoveAt(index);
+        Draft.Families.Insert(target, family);
     }
 
-    private void MakeDefault(RouteDefinition route)
+    private void MakeDefault(RouteFamilyDefinition family)
     {
-        foreach (RouteDefinition candidate in Draft.Routes)
+        foreach (RouteFamilyDefinition candidate in Draft.Families)
         {
-            candidate.IsDefault = ReferenceEquals(candidate, route);
+            candidate.IsDefault = ReferenceEquals(candidate, family);
         }
     }
+
+    private void SetFamilyResilience(RouteFamilyDefinition family, string policy)
+    {
+        family.ResiliencePolicy = policy;
+        family.MaximumAttempts = policy == "None"
+            ? 1
+            : Math.Max(2, Math.Min(family.Routes.Count, family.MaximumAttempts));
+        SelectedNodeKey = policy == "None"
+            ? $"family:{family.Id}"
+            : $"policy:{family.Id}";
+    }
+
+    private void AddRoute(RouteFamilyDefinition family)
+    {
+        int routeNumber = family.Routes.Count + 1;
+        RouteDefinition source = family.Routes[^1];
+        var route = CreateRoute(
+            $"{family.Name}-backup-{routeNumber - 1}",
+            "Backup",
+            source.ModelId == "gpt-5.5" ? "gpt-5.4" : "gpt-4o-mini",
+            source.ReasoningEffort == "high" ? "medium" : source.ReasoningEffort,
+            source.Temperature,
+            $"Back up the {family.Name} route family.");
+        family.Routes.Add(route);
+        if (family.ResiliencePolicy == "None")
+        {
+            family.ResiliencePolicy = "Ordered";
+        }
+
+        family.MaximumAttempts = Math.Max(family.MaximumAttempts, family.Routes.Count);
+        SelectedNodeKey = $"route:{family.Id}:{route.Id}";
+    }
+
+    private void RemoveRoute(RouteFamilyDefinition family, RouteDefinition route)
+    {
+        if (family.Routes.Count <= 1)
+        {
+            return;
+        }
+
+        family.Routes.Remove(route);
+        family.MaximumAttempts = Math.Min(family.MaximumAttempts, family.Routes.Count);
+        if (family.Routes.Count == 1)
+        {
+            family.ResiliencePolicy = "None";
+            family.MaximumAttempts = 1;
+        }
+
+        SelectedNodeKey = $"route:{family.Id}:{family.Routes[0].Id}";
+    }
+
+    private void MoveRoute(RouteFamilyDefinition family, RouteDefinition route, int offset)
+    {
+        int index = family.Routes.IndexOf(route);
+        int target = index + offset;
+        if (index < 0 || target < 0 || target >= family.Routes.Count)
+        {
+            return;
+        }
+
+        family.Routes.RemoveAt(index);
+        family.Routes.Insert(target, route);
+    }
+
+    private bool IsFirstFamily(RouteFamilyDefinition family) => Draft.Families.IndexOf(family) == 0;
+
+    private bool IsLastFamily(RouteFamilyDefinition family) =>
+        Draft.Families.IndexOf(family) == Draft.Families.Count - 1;
+
+    private static bool IsFirstRoute(RouteFamilyDefinition family, RouteDefinition route) =>
+        family.Routes.IndexOf(route) == 0;
+
+    private static bool IsLastRoute(RouteFamilyDefinition family, RouteDefinition route) =>
+        family.Routes.IndexOf(route) == family.Routes.Count - 1;
+
+    private RouteFamilyDefinition? ResolveSelectedFamily()
+    {
+        string[] parts = SelectedNodeKey.Split(':');
+        string? familyId = parts.Length switch
+        {
+            >= 2 when parts[0] is "family" or "policy" => parts[1],
+            >= 3 when parts[0] == "route" => parts[1],
+            _ => null,
+        };
+
+        return familyId is null
+            ? null
+            : Draft.Families.FirstOrDefault(family => family.Id == familyId);
+    }
+
+    private RouteFamilyDefinition? ResolveSelectedRouteFamily() =>
+        SelectedNodeKey.StartsWith("route:", StringComparison.Ordinal)
+            ? ResolveSelectedFamily()
+            : null;
+
+    private RouteDefinition? ResolveSelectedRoute()
+    {
+        string[] parts = SelectedNodeKey.Split(':');
+        if (parts.Length >= 2 && parts[0] == "global")
+        {
+            return Draft.GlobalFallback;
+        }
+
+        if (parts.Length >= 3 && parts[0] == "route")
+        {
+            return Draft.Families
+                .FirstOrDefault(family => family.Id == parts[1])
+                ?.Routes.FirstOrDefault(route => route.Id == parts[2]);
+        }
+
+        return null;
+    }
+
+    private string GetSelectedNodeType()
+    {
+        if (SelectedNodeKey == "outer")
+        {
+            return "Outer resilience";
+        }
+
+        if (SelectedNodeKey == "selector")
+        {
+            return "Selection";
+        }
+
+        if (SelectedNodeKey.StartsWith("family:", StringComparison.Ordinal))
+        {
+            return Draft.SelectionPolicy == "Semantic" ? "Semantic profile" : "Route family";
+        }
+
+        if (SelectedNodeKey.StartsWith("policy:", StringComparison.Ordinal))
+        {
+            return "Family resilience";
+        }
+
+        if (SelectedNodeKey.StartsWith("global:", StringComparison.Ordinal))
+        {
+            return "Outer fallback client";
+        }
+
+        return "Model client";
+    }
+
+    private string GetSelectedNodeTitle()
+    {
+        if (SelectedNodeKey == "outer")
+        {
+            return "Whole-pipeline failover";
+        }
+
+        if (SelectedNodeKey == "selector")
+        {
+            return GetSelectorTypeName(Draft);
+        }
+
+        if (SelectedNodeKey.StartsWith("policy:", StringComparison.Ordinal) && SelectedFamily is { } policyFamily)
+        {
+            return policyFamily.ResiliencePolicy == "Cooldown"
+                ? "CooldownFailoverChatClient"
+                : "OrderedFailoverChatClient";
+        }
+
+        return SelectedRoute?.Name ?? SelectedFamily?.Name ?? "Pipeline node";
+    }
+
+    private string GetSelectedNodeDescription()
+    {
+        if (SelectedNodeKey == "outer")
+        {
+            return "Retries the entire selector through one global emergency client.";
+        }
+
+        if (SelectedNodeKey == "selector")
+        {
+            return "Selects a route-family IChatClient before any model is invoked.";
+        }
+
+        if (SelectedNodeKey.StartsWith("policy:", StringComparison.Ordinal) && SelectedFamily is { } family)
+        {
+            return $"{family.Name} owns this resilience policy and its ordered model clients.";
+        }
+
+        if (SelectedNodeKey.StartsWith("global:", StringComparison.Ordinal))
+        {
+            return "Runs only when the selected family client propagates a terminal failure.";
+        }
+
+        if (SelectedRoute is not null)
+        {
+            return "A configured leaf IChatClient with stable model and option identity.";
+        }
+
+        return "A stable semantic target whose implementation can be a single client or failover chain.";
+    }
+
+    private static string GetSelectorTypeName(PipelineConfiguration configuration) =>
+        configuration.SelectionPolicy switch
+        {
+            "Semantic" => "SemanticRoutingChatClient",
+            "Callback" => "RoutingChatClient.Create",
+            _ => "Direct route selection",
+        };
+
+    private static string GetResilienceDescription(string policy) => policy switch
+    {
+        "Ordered" => "A built-in ordered chain retries another compatible model after a pre-output failure.",
+        "Cooldown" => "A custom FailoverChatClient remembers failures and skips cooling models on later requests.",
+        _ => "The family target is one configured model client.",
+    };
 
     private void BuildPipeline()
     {
@@ -254,7 +517,8 @@ public partial class Home
         }
 
         IsBuilt = false;
-        CurrentStep = 1;
+        CurrentStep = 2;
+        SelectedNodeKey = "selector";
         IsSending = false;
     }
 
@@ -279,12 +543,15 @@ public partial class Home
             SessionId = SessionId,
             Prompt = prompt,
             SelectionPolicy = ActiveConfiguration.SelectionPolicy,
-            ResiliencePolicy = ActiveConfiguration.ResiliencePolicy,
             InputTokens = EstimateTokens(prompt),
         };
         CurrentDebug = debug;
         DebugTab = "Summary";
-        AddEvent(debug, "Routing", "Request started", $"{ActiveConfiguration.SelectionPolicy} selection with {ActiveConfiguration.ResiliencePolicy} resilience.");
+        AddEvent(
+            debug,
+            "Routing",
+            "Request started",
+            $"{ActiveConfiguration.SelectionPolicy} selection over {ActiveConfiguration.Families.Count} stable route-family clients.");
 
         _requestCancellation = new CancellationTokenSource();
         IsSending = true;
@@ -307,183 +574,58 @@ public partial class Home
         CancellationToken cancellationToken)
     {
         PipelineConfiguration configuration = ActiveConfiguration!;
-        RouteDefinition selectedRoute = SelectInitialRoute(configuration, prompt, debug);
-        debug.SelectedRoute = selectedRoute.Name;
-        debug.ConfiguredModel = selectedRoute.ModelId;
-        AddEvent(debug, "Selection", "Client selected", $"{selectedRoute.Name} ({selectedRoute.ModelId}) was selected first.");
+        RouteFamilyDefinition selectedFamily = SelectRouteFamily(configuration, prompt, debug);
+        debug.SelectedFamilyId = selectedFamily.Id;
+        debug.SelectedRoute = selectedFamily.Name;
+        debug.ResiliencePolicy = selectedFamily.ResiliencePolicy;
+        debug.ConfiguredModel = selectedFamily.Routes[0].ModelId;
+        AddEvent(
+            debug,
+            "Selection",
+            "Route family selected",
+            $"{selectedFamily.Name} resolved to a {GetFamilyTargetType(selectedFamily)} target.");
 
-        List<RouteDefinition> candidates = BuildCandidateList(configuration, selectedRoute);
-        int attemptNumber = 0;
+        var execution = new RequestExecutionContext();
+        InvocationOutcome familyOutcome = await ExecuteFamilyAsync(
+            configuration,
+            selectedFamily,
+            prompt,
+            debug,
+            execution,
+            cancellationToken);
 
-        for (int candidateIndex = 0; candidateIndex < candidates.Count; candidateIndex++)
+        if (familyOutcome.Kind is InvocationOutcomeKind.Succeeded or InvocationOutcomeKind.Canceled)
         {
-            RouteDefinition route = candidates[candidateIndex];
+            return;
+        }
 
-            if (configuration.ResiliencePolicy == "Cooldown" && IsPolicyUnavailable(route))
+        if (configuration.GlobalFallbackEnabled)
+        {
+            AddEvent(
+                debug,
+                "Policy",
+                "Family failure propagated",
+                $"{selectedFamily.Name} was terminal in its own layer; the outer OrderedFailoverChatClient selected {configuration.GlobalFallback.Name}.");
+            InvocationOutcome globalOutcome = await InvokeRouteAsync(
+                configuration.GlobalFallback,
+                "Outer fallback",
+                prompt,
+                debug,
+                execution,
+                isTerminalInLayer: true,
+                cancellationToken);
+            if (globalOutcome.Kind is InvocationOutcomeKind.Succeeded or InvocationOutcomeKind.Canceled)
             {
-                AddEvent(
-                    debug,
-                    "Policy",
-                    "Candidate skipped",
-                    $"{route.Name} is {GetPolicyStateLabel(route).ToLowerInvariant()}.");
-                await InvokeAsync(StateHasChanged);
-                continue;
-            }
-
-            if (attemptNumber >= configuration.MaximumAttempts)
-            {
-                break;
-            }
-
-            attemptNumber++;
-            AddEvent(debug, "Attempt", $"Attempt {attemptNumber} started", $"Invoking {route.Name} with {route.ModelId}.");
-            await InvokeAsync(StateHasChanged);
-
-            var stopwatch = Stopwatch.StartNew();
-            bool outputCommitted = false;
-            int? timeToFirstUpdate = null;
-            ChatEntry? assistantMessage = null;
-
-            try
-            {
-                if (TryConsumeAvailabilityFailure(route, out string failure, out bool permanentFailure))
-                {
-                    await Task.Delay(160 + GetLatencyOffset(route), cancellationToken);
-                    stopwatch.Stop();
-
-                    if (configuration.ResiliencePolicy == "Cooldown")
-                    {
-                        ApplyCooldown(route, failure, permanentFailure);
-                    }
-
-                    bool isTerminal = !HasNextCandidate(
-                        configuration,
-                        candidates,
-                        candidateIndex + 1,
-                        attemptNumber);
-                    debug.Attempts.Add(new AttemptRecord(
-                        attemptNumber,
-                        route.Name,
-                        route.ModelId,
-                        (int)stopwatch.ElapsedMilliseconds,
-                        null,
-                        false,
-                        false,
-                        isTerminal,
-                        "Failed",
-                        $"HttpRequestException: {failure}"));
-                    AddEvent(
-                        debug,
-                        "Failure",
-                        $"{route.Name} failed",
-                        isTerminal
-                            ? "The attempt is terminal."
-                            : "Failure occurred before output; selecting again.");
-
-                    await InvokeAsync(StateHasChanged);
-                    if (isTerminal)
-                    {
-                        break;
-                    }
-
-                    continue;
-                }
-
-                int latency = 260 + GetLatencyOffset(route);
-                string response = ComposeResponse(route, prompt, configuration);
-                assistantMessage = new ChatEntry
-                {
-                    Role = "assistant",
-                    RouteName = route.Name,
-                    ModelId = route.ModelId,
-                    IsPending = true,
-                };
-                Messages.Add(assistantMessage);
-
-                if (configuration.Streaming)
-                {
-                    await Task.Delay(latency, cancellationToken);
-                    timeToFirstUpdate = (int)stopwatch.ElapsedMilliseconds;
-
-                    foreach (string chunk in ChunkResponse(response))
-                    {
-                        outputCommitted = true;
-                        assistantMessage.Content += chunk;
-                        assistantMessage.IsPending = false;
-                        await InvokeAsync(StateHasChanged);
-                        await Task.Delay(48, cancellationToken);
-                    }
-                }
-                else
-                {
-                    await Task.Delay(latency + 220, cancellationToken);
-                    assistantMessage.Content = response;
-                    assistantMessage.IsPending = false;
-                    await InvokeAsync(StateHasChanged);
-                }
-
-                stopwatch.Stop();
-                route.CooldownUntil = null;
-                route.PolicyDisabled = false;
-                route.ConsecutiveFailures = 0;
-                route.LastFailure = null;
-
-                debug.Attempts.Add(new AttemptRecord(
-                    attemptNumber,
-                    route.Name,
-                    route.ModelId,
-                    (int)stopwatch.ElapsedMilliseconds,
-                    timeToFirstUpdate,
-                    true,
-                    configuration.Streaming && outputCommitted,
-                    true,
-                    "Completed",
-                    null));
-                debug.FinalRoute = route.Name;
-                debug.ConfiguredModel = route.ModelId;
-                debug.ActualModel = route.ModelId;
-                debug.Outcome = "Completed";
-                debug.FinishReason = "Stop";
-                debug.OutputTokens = EstimateTokens(response);
-                AddEvent(debug, "Response", "Response completed", $"{route.Name} completed the request with {route.ModelId}.");
-                await InvokeAsync(StateHasChanged);
-                return;
-            }
-            catch (OperationCanceledException)
-            {
-                stopwatch.Stop();
-                if (assistantMessage is not null)
-                {
-                    assistantMessage.IsPending = false;
-                }
-
-                debug.Attempts.Add(new AttemptRecord(
-                    attemptNumber,
-                    route.Name,
-                    route.ModelId,
-                    (int)stopwatch.ElapsedMilliseconds,
-                    timeToFirstUpdate,
-                    false,
-                    outputCommitted,
-                    true,
-                    "Canceled",
-                    "OperationCanceledException"));
-                debug.FinalRoute = route.Name;
-                debug.ConfiguredModel = route.ModelId;
-                debug.ActualModel = outputCommitted ? route.ModelId : "None";
-                debug.Outcome = "Canceled";
-                debug.FinishReason = "Canceled";
-                AddEvent(debug, "Canceled", "Request canceled", "Cancellation is terminal and no reselection occurs.");
-                await InvokeAsync(StateHasChanged);
                 return;
             }
         }
 
         debug.FinalRoute = "None";
+        debug.FinalRouteId = string.Empty;
         debug.ActualModel = "None";
         debug.Outcome = "Failed";
         debug.FinishReason = "Error";
-        AddEvent(debug, "Failure", "All routes unavailable", "No eligible route completed the request.");
+        AddEvent(debug, "Failure", "Pipeline exhausted", "No configured leaf client completed the request.");
         Messages.Add(new ChatEntry
         {
             Role = "assistant",
@@ -493,30 +635,266 @@ public partial class Home
         await InvokeAsync(StateHasChanged);
     }
 
-    private RouteDefinition SelectInitialRoute(
+    private async Task<InvocationOutcome> ExecuteFamilyAsync(
+        PipelineConfiguration configuration,
+        RouteFamilyDefinition family,
+        string prompt,
+        RequestDebugState debug,
+        RequestExecutionContext execution,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<RouteDefinition> candidates = family.ResiliencePolicy == "None"
+            ? family.Routes.Take(1).ToArray()
+            : family.Routes;
+        int maximumAttempts = family.ResiliencePolicy == "None"
+            ? 1
+            : family.MaximumAttempts;
+        int familyAttempts = 0;
+
+        for (int index = 0; index < candidates.Count; index++)
+        {
+            RouteDefinition route = candidates[index];
+            if (family.ResiliencePolicy == "Cooldown" && IsPolicyUnavailable(route))
+            {
+                AddEvent(
+                    debug,
+                    "Policy",
+                    "Cooling model skipped",
+                    $"{route.Name} was skipped inside {family.Name}; state is {GetPolicyStateLabel(route).ToLowerInvariant()}.");
+                await InvokeAsync(StateHasChanged);
+                continue;
+            }
+
+            if (familyAttempts >= maximumAttempts)
+            {
+                break;
+            }
+
+            familyAttempts++;
+            bool hasNextCandidate = HasNextFamilyCandidate(
+                family,
+                candidates,
+                index + 1,
+                familyAttempts,
+                maximumAttempts);
+            InvocationOutcome outcome = await InvokeRouteAsync(
+                route,
+                $"{family.Name} / {family.ResiliencePolicy}",
+                prompt,
+                debug,
+                execution,
+                isTerminalInLayer: !hasNextCandidate,
+                cancellationToken);
+
+            if (outcome.Kind == InvocationOutcomeKind.Succeeded ||
+                outcome.Kind == InvocationOutcomeKind.Canceled)
+            {
+                return outcome;
+            }
+
+            if (family.ResiliencePolicy == "Cooldown")
+            {
+                ApplyCooldown(family, route, outcome.Failure!, outcome.PermanentFailure);
+            }
+
+            if (!hasNextCandidate)
+            {
+                break;
+            }
+
+            AddEvent(
+                debug,
+                "Policy",
+                "Family reselected",
+                $"{family.Name} will invoke its next compatible model client.");
+        }
+
+        return InvocationOutcome.Failed("The selected route family was exhausted.");
+    }
+
+    private async Task<InvocationOutcome> InvokeRouteAsync(
+        RouteDefinition route,
+        string layer,
+        string prompt,
+        RequestDebugState debug,
+        RequestExecutionContext execution,
+        bool isTerminalInLayer,
+        CancellationToken cancellationToken)
+    {
+        execution.AttemptNumber++;
+        int attemptNumber = execution.AttemptNumber;
+        AddEvent(debug, "Attempt", $"Attempt {attemptNumber} started", $"Invoking {route.Name} in {layer}.");
+        await InvokeAsync(StateHasChanged);
+
+        var stopwatch = Stopwatch.StartNew();
+        bool outputCommitted = false;
+        int? timeToFirstUpdate = null;
+        ChatEntry? assistantMessage = null;
+
+        try
+        {
+            if (TryConsumeAvailabilityFailure(route, out string failure, out bool permanentFailure))
+            {
+                await Task.Delay(160 + GetLatencyOffset(route), cancellationToken);
+                stopwatch.Stop();
+                debug.Attempts.Add(new AttemptRecord(
+                    attemptNumber,
+                    layer,
+                    route.Name,
+                    route.ModelId,
+                    (int)stopwatch.ElapsedMilliseconds,
+                    null,
+                    false,
+                    false,
+                    isTerminalInLayer,
+                    "Failed",
+                    $"HttpRequestException: {failure}"));
+                AddEvent(
+                    debug,
+                    "Failure",
+                    $"{route.Name} failed",
+                    isTerminalInLayer
+                        ? "The attempt is terminal in this failover layer."
+                        : "Failure occurred before output; this layer can select again.");
+                await InvokeAsync(StateHasChanged);
+                return InvocationOutcome.Failed(failure, permanentFailure);
+            }
+
+            int latency = 260 + GetLatencyOffset(route);
+            string response = ComposeResponse(route, layer, prompt);
+            assistantMessage = new ChatEntry
+            {
+                Role = "assistant",
+                RouteName = route.Name,
+                ModelId = route.ModelId,
+                IsPending = true,
+            };
+            Messages.Add(assistantMessage);
+
+            if (ActiveConfiguration!.Streaming)
+            {
+                await Task.Delay(latency, cancellationToken);
+                timeToFirstUpdate = (int)stopwatch.ElapsedMilliseconds;
+
+                foreach (string chunk in ChunkResponse(response))
+                {
+                    outputCommitted = true;
+                    assistantMessage.Content += chunk;
+                    assistantMessage.IsPending = false;
+                    await InvokeAsync(StateHasChanged);
+                    await Task.Delay(48, cancellationToken);
+                }
+            }
+            else
+            {
+                await Task.Delay(latency + 220, cancellationToken);
+                assistantMessage.Content = response;
+                assistantMessage.IsPending = false;
+                await InvokeAsync(StateHasChanged);
+            }
+
+            stopwatch.Stop();
+            route.CooldownUntil = null;
+            route.PolicyDisabled = false;
+            route.ConsecutiveFailures = 0;
+            route.LastFailure = null;
+
+            debug.Attempts.Add(new AttemptRecord(
+                attemptNumber,
+                layer,
+                route.Name,
+                route.ModelId,
+                (int)stopwatch.ElapsedMilliseconds,
+                timeToFirstUpdate,
+                true,
+                ActiveConfiguration.Streaming && outputCommitted,
+                true,
+                "Completed",
+                null));
+            debug.FinalRoute = route.Name;
+            debug.FinalRouteId = route.Id;
+            debug.ConfiguredModel = route.ModelId;
+            debug.ActualModel = route.ModelId;
+            debug.Outcome = "Completed";
+            debug.FinishReason = "Stop";
+            debug.OutputTokens = EstimateTokens(response);
+            AddEvent(debug, "Response", "Response completed", $"{route.Name} completed the request with {route.ModelId}.");
+            await InvokeAsync(StateHasChanged);
+            return InvocationOutcome.Succeeded();
+        }
+        catch (OperationCanceledException)
+        {
+            stopwatch.Stop();
+            if (assistantMessage is not null)
+            {
+                if (!outputCommitted)
+                {
+                    Messages.Remove(assistantMessage);
+                }
+                else
+                {
+                    assistantMessage.IsPending = false;
+                }
+            }
+
+            debug.Attempts.Add(new AttemptRecord(
+                attemptNumber,
+                layer,
+                route.Name,
+                route.ModelId,
+                (int)stopwatch.ElapsedMilliseconds,
+                timeToFirstUpdate,
+                false,
+                outputCommitted,
+                true,
+                "Canceled",
+                "OperationCanceledException"));
+            debug.FinalRoute = route.Name;
+            debug.FinalRouteId = route.Id;
+            debug.ConfiguredModel = route.ModelId;
+            debug.ActualModel = outputCommitted ? route.ModelId : "None";
+            debug.Outcome = "Canceled";
+            debug.FinishReason = "Canceled";
+            AddEvent(debug, "Canceled", "Request canceled", "Cancellation is terminal and no layer reselects.");
+            await InvokeAsync(StateHasChanged);
+            return InvocationOutcome.Canceled();
+        }
+    }
+
+    private RouteFamilyDefinition SelectRouteFamily(
         PipelineConfiguration configuration,
         string prompt,
         RequestDebugState debug)
     {
         if (configuration.SelectionPolicy == "Semantic")
         {
-            List<RoutingScore> scores = ScoreRoutes(configuration, prompt);
+            List<RoutingScore> scores = ScoreFamilies(configuration, prompt);
             debug.Scores.AddRange(scores);
 
             RoutingScore? winner = scores
-                .Where(score => !configuration.Routes.First(route => route.Id == score.RouteId).IsDefault)
+                .Where(score => !configuration.Families
+                    .First(family => family.Id == score.RouteFamilyId)
+                    .IsDefault)
                 .OrderByDescending(score => score.Score)
                 .FirstOrDefault();
 
             if (winner is not null && winner.Score >= configuration.ScoreThreshold)
             {
-                AddEvent(debug, "Selection", "Semantic threshold cleared", $"{winner.RouteName} scored {winner.Score:0.00}.");
-                return configuration.Routes.First(route => route.Id == winner.RouteId);
+                AddEvent(
+                    debug,
+                    "Selection",
+                    "Semantic threshold cleared",
+                    $"{winner.RouteFamilyName} scored {winner.Score:0.00}.");
+                return configuration.Families.First(family => family.Id == winner.RouteFamilyId);
             }
 
-            RouteDefinition fallback = configuration.Routes.FirstOrDefault(route => route.IsDefault) ??
-                                       configuration.Routes[^1];
-            AddEvent(debug, "Selection", "Default route selected", $"No route cleared {configuration.ScoreThreshold:0.00}; using {fallback.Name}.");
+            RouteFamilyDefinition fallback = configuration.Families.FirstOrDefault(family => family.IsDefault) ??
+                                             configuration.Families[^1];
+            AddEvent(
+                debug,
+                "Selection",
+                "Default family selected",
+                $"No profile cleared {configuration.ScoreThreshold:0.00}; using {fallback.Name}.");
             return fallback;
         }
 
@@ -524,63 +902,39 @@ public partial class Home
         {
             bool complex = prompt.Length > 90 ||
                            ContainsAny(prompt, "architecture", "analyze", "complex", "debug", "reason");
-            RouteDefinition selected = complex
-                ? configuration.Routes.FirstOrDefault(route => route.ReasoningEffort == "high") ??
-                  configuration.Routes[0]
-                : configuration.Routes.FirstOrDefault(route => route.ReasoningEffort is "low" or "none") ??
-                  configuration.Routes[0];
-            AddEvent(debug, "Selection", "Callback evaluated", complex ? "Request classified as complex." : "Request classified as routine.");
+            RouteFamilyDefinition selected = complex
+                ? configuration.Families.FirstOrDefault(family =>
+                    family.Routes.Any(route => route.ReasoningEffort == "high")) ??
+                  configuration.Families[0]
+                : configuration.Families.FirstOrDefault(family =>
+                    family.Routes.Any(route => route.ReasoningEffort is "low" or "none")) ??
+                  configuration.Families[0];
+            AddEvent(
+                debug,
+                "Selection",
+                "Callback evaluated",
+                complex ? "Request classified as complex." : "Request classified as routine.");
             return selected;
         }
 
-        return configuration.Routes[0];
+        return configuration.Families[0];
     }
 
-    private static List<RouteDefinition> BuildCandidateList(
-        PipelineConfiguration configuration,
-        RouteDefinition selectedRoute)
-    {
-        var candidates = new List<RouteDefinition> { selectedRoute };
-        if (configuration.ResiliencePolicy == "None")
-        {
-            return candidates;
-        }
-
-        if (configuration.SelectionPolicy == "Semantic")
-        {
-            RouteDefinition? defaultRoute = configuration.Routes.FirstOrDefault(route => route.IsDefault);
-            if (defaultRoute is not null && defaultRoute.Id != selectedRoute.Id)
-            {
-                candidates.Add(defaultRoute);
-            }
-        }
-
-        foreach (RouteDefinition route in configuration.Routes)
-        {
-            if (candidates.All(candidate => candidate.Id != route.Id))
-            {
-                candidates.Add(route);
-            }
-        }
-
-        return candidates;
-    }
-
-    private bool HasNextCandidate(
-        PipelineConfiguration configuration,
+    private static bool HasNextFamilyCandidate(
+        RouteFamilyDefinition family,
         IReadOnlyList<RouteDefinition> candidates,
         int startIndex,
-        int attemptsMade)
+        int attemptsMade,
+        int maximumAttempts)
     {
-        if (configuration.ResiliencePolicy == "None" ||
-            attemptsMade >= configuration.MaximumAttempts)
+        if (family.ResiliencePolicy == "None" || attemptsMade >= maximumAttempts)
         {
             return false;
         }
 
-        for (int i = startIndex; i < candidates.Count; i++)
+        for (int index = startIndex; index < candidates.Count; index++)
         {
-            if (configuration.ResiliencePolicy != "Cooldown" || !IsPolicyUnavailable(candidates[i]))
+            if (family.ResiliencePolicy != "Cooldown" || !IsPolicyUnavailable(candidates[index]))
             {
                 return true;
             }
@@ -589,22 +943,22 @@ public partial class Home
         return false;
     }
 
-    private static List<RoutingScore> ScoreRoutes(
+    private static List<RoutingScore> ScoreFamilies(
         PipelineConfiguration configuration,
         string prompt)
     {
         HashSet<string> queryTerms = Tokenize(prompt);
         var scores = new List<RoutingScore>();
 
-        foreach (RouteDefinition route in configuration.Routes)
+        foreach (RouteFamilyDefinition family in configuration.Families)
         {
-            if (route.IsDefault)
+            if (family.IsDefault)
             {
-                scores.Add(new RoutingScore(route.Id, route.Name, 0, "Default route"));
+                scores.Add(new RoutingScore(family.Id, family.Name, 0, "Default family"));
                 continue;
             }
 
-            HashSet<string> profileTerms = Tokenize(route.ProfileExamples);
+            HashSet<string> profileTerms = Tokenize(family.ProfileExamples);
             string[] matches = queryTerms
                 .Intersect(profileTerms, StringComparer.OrdinalIgnoreCase)
                 .Order(StringComparer.OrdinalIgnoreCase)
@@ -613,8 +967,8 @@ public partial class Home
                 ? 0.08
                 : Math.Min(0.96, 0.18 + (matches.Length * 0.22));
             scores.Add(new RoutingScore(
-                route.Id,
-                route.Name,
+                family.Id,
+                family.Name,
                 score,
                 string.Join(", ", matches)));
         }
@@ -658,7 +1012,11 @@ public partial class Home
         return false;
     }
 
-    private void ApplyCooldown(RouteDefinition route, string failure, bool permanentFailure)
+    private static void ApplyCooldown(
+        RouteFamilyDefinition family,
+        RouteDefinition route,
+        string failure,
+        bool permanentFailure)
     {
         route.ConsecutiveFailures++;
         route.LastFailure = failure;
@@ -670,7 +1028,7 @@ public partial class Home
             return;
         }
 
-        DateTimeOffset automaticCooldown = DateTimeOffset.Now.AddSeconds(ActiveConfiguration!.CooldownSeconds);
+        DateTimeOffset automaticCooldown = DateTimeOffset.Now.AddSeconds(family.CooldownSeconds);
         route.CooldownUntil = route.DownUntil is { } manualExpiry && manualExpiry > automaticCooldown
             ? manualExpiry
             : automaticCooldown;
@@ -804,7 +1162,7 @@ public partial class Home
         }
 
         DateTimeOffset now = DateTimeOffset.Now;
-        foreach (RouteDefinition route in ActiveConfiguration.Routes)
+        foreach (RouteDefinition route in ActiveConfiguration.AllRoutes())
         {
             if (route.DownUntil is { } downUntil && downUntil <= now)
             {
@@ -840,31 +1198,30 @@ public partial class Home
 
     private static string ComposeResponse(
         RouteDefinition route,
-        string prompt,
-        PipelineConfiguration configuration)
+        string layer,
+        string prompt)
     {
         if (ContainsAny(prompt, "code", "c#", "bug", "refactor", "function", "service"))
         {
-            return $"The {route.Name} route handled this as a coding request on {route.ModelId}. " +
-                   "Start by keeping selection policy separate from each configured client. " +
-                   "Wrap the model with route-level options, compose it behind the router, and record each invocation so failover remains visible.";
+            return $"{route.Name} handled the coding request on {route.ModelId}. " +
+                   $"It was invoked through {layer}. The semantic router selected a stable route-family client, " +
+                   "and that family owned the model-level resilience behavior.";
         }
 
         if (ContainsAny(prompt, "write", "poem", "story", "announcement", "creative"))
         {
-            return $"The {route.Name} route handled this as a creative request on {route.ModelId}. " +
-                   "A clean launch note could read: Build the route, send the prompt, and watch every decision surface in real time.";
+            return $"{route.Name} handled the creative request on {route.ModelId}. " +
+                   "The composition keeps semantic classification outside and compatible-model failover inside the selected family.";
         }
 
-        if (ContainsAny(prompt, "failover", "stream", "terminal", "cooldown"))
+        if (ContainsAny(prompt, "failover", "stream", "terminal", "cooldown", "semantic"))
         {
-            return $"The {route.Name} route answered with {configuration.ResiliencePolicy} resilience active. " +
-                   "A failure before the first streamed update can select again. Once output is committed, the attempt is terminal. " +
-                   "Cooldown adds cross-request memory so a recently failed route can be skipped.";
+            return $"{route.Name} answered through {layer}. Semantic routing chooses the route family first. " +
+                   "That family can then use ordered or cooldown failover without replacing the semantic profile client.";
         }
 
-        return $"The {route.Name} route completed this simulated request with {route.ModelId}. " +
-               "Use the inspector to compare the selected route, effective options, provider model ID, and failover attempt data.";
+        return $"{route.Name} completed this simulated request with {route.ModelId} through {layer}. " +
+               "Use the inspector to compare family selection, leaf attempts, and any outer emergency fallback.";
     }
 
     private static IEnumerable<string> ChunkResponse(string response)
@@ -906,8 +1263,8 @@ public partial class Home
 
     private static string GetScenarioMonogram(string scenarioId) => scenarioId switch
     {
-        "semantic-failover" => "S+",
-        "ordered" => "OF",
+        "semantic-composition" => "S+",
+        "semantic-ordered" => "SO",
         "cooldown" => "CD",
         _ => "R2",
     };
@@ -919,83 +1276,175 @@ public partial class Home
 
     private static string FormatBoolean(bool value) => value ? "True" : "False";
 
-    private bool HasValidRoutes() =>
-        Draft.Routes.Count >= 2 &&
-        Draft.Routes.All(route =>
-            !string.IsNullOrWhiteSpace(route.Name) &&
-            !string.IsNullOrWhiteSpace(route.ModelId));
+    private bool HasValidTree() =>
+        Draft.Families.Count >= 1 &&
+        Draft.Families.All(family =>
+            !string.IsNullOrWhiteSpace(family.Name) &&
+            family.Routes.Count >= 1 &&
+            family.Routes.All(route =>
+                !string.IsNullOrWhiteSpace(route.Name) &&
+                !string.IsNullOrWhiteSpace(route.ModelId)));
 
     private List<string> GetWarnings()
     {
         var warnings = new List<string>();
 
-        if (Draft.MaximumAttempts > Draft.Routes.Count)
+        foreach (RouteFamilyDefinition family in Draft.Families)
         {
-            warnings.Add("Maximum attempts is higher than the number of distinct routes.");
+            if (family.ResiliencePolicy == "None" && family.Routes.Count > 1)
+            {
+                warnings.Add($"{family.Name} contains multiple models but has no failover policy; only its first client will be invoked.");
+            }
+
+            if (family.MaximumAttempts > family.Routes.Count)
+            {
+                warnings.Add($"{family.Name} allows more attempts than its number of model clients.");
+            }
         }
 
-        if (Draft.Routes.Any(route => route.ReasoningEffort == "high" && route.Temperature > 0.7))
+        if (Draft.AllRoutes().Any(route => route.ReasoningEffort == "high" && route.Temperature > 0.7))
         {
-            warnings.Add("A high-reasoning route also has a high temperature. Confirm that the selected model supports that combination.");
+            warnings.Add("A high-reasoning client also has a high temperature. Confirm that its model supports that combination.");
         }
 
-        if (Draft.ResiliencePolicy == "None")
+        if (!Draft.GlobalFallbackEnabled)
         {
-            warnings.Add("No resilience layer is configured; the first invocation failure will be terminal.");
+            warnings.Add("No outer emergency fallback is configured; an exhausted selected family ends the request.");
+        }
+        else if (string.IsNullOrWhiteSpace(Draft.GlobalFallback.Name) ||
+                 string.IsNullOrWhiteSpace(Draft.GlobalFallback.ModelId))
+        {
+            warnings.Add("The outer emergency fallback needs both a client name and model ID.");
         }
 
         return warnings;
     }
 
+    private static string GetCompositionLabel(PipelineConfiguration configuration)
+    {
+        string inner = configuration.SelectionPolicy == "Semantic"
+            ? "Semantic families"
+            : configuration.SelectionPolicy == "Callback"
+                ? "Callback families"
+                : "Direct family";
+        return configuration.GlobalFallbackEnabled ? $"Outer failover / {inner}" : inner;
+    }
+
+    private static string GetFamilyTargetType(RouteFamilyDefinition family) => family.ResiliencePolicy switch
+    {
+        "Ordered" => "OrderedFailoverChatClient",
+        "Cooldown" => "CooldownFailoverChatClient",
+        _ => "configured IChatClient",
+    };
+
+    private static List<RouteLocation> GetRouteLocations(PipelineConfiguration configuration)
+    {
+        var locations = new List<RouteLocation>();
+        foreach (RouteFamilyDefinition family in configuration.Families)
+        {
+            locations.AddRange(family.Routes.Select(route =>
+                new RouteLocation(family.Id, family.Name, route, IsGlobalFallback: false)));
+        }
+
+        if (configuration.GlobalFallbackEnabled)
+        {
+            locations.Add(new RouteLocation(
+                string.Empty,
+                "Outer fallback",
+                configuration.GlobalFallback,
+                IsGlobalFallback: true));
+        }
+
+        return locations;
+    }
+
+    private static RouteDefinition? FindRouteById(
+        PipelineConfiguration configuration,
+        string routeId) =>
+        configuration.AllRoutes().FirstOrDefault(route => route.Id == routeId);
+
     private static string BuildCodePreview(PipelineConfiguration configuration)
     {
         var builder = new StringBuilder();
-        foreach (RouteDefinition route in configuration.Routes)
+        foreach (RouteDefinition route in configuration.AllRoutes())
         {
             string variable = ToVariableName(route.Name);
             builder.AppendLine($"IChatClient {variable} = openAI.GetChatClient(\"{route.ModelId}\")");
             builder.AppendLine("    .AsIChatClient()");
             builder.AppendLine("    .AsBuilder()");
-            builder.AppendLine($"    .ConfigureOptions(options => options.Reasoning = \"{route.ReasoningEffort}\")");
+            builder.AppendLine("    .ConfigureOptions(options =>");
+            builder.AppendLine($"        options.Reasoning = new() {{ Effort = ReasoningEffort.{ToTitle(route.ReasoningEffort)} }})");
             builder.AppendLine("    .Build();");
             builder.AppendLine();
         }
 
-        string firstRoute = ToVariableName(configuration.Routes[0].Name);
-        string selectedClient = firstRoute;
+        foreach (RouteFamilyDefinition family in configuration.Families)
+        {
+            string familyVariable = $"{ToVariableName(family.Name)}Route";
+            string candidates = string.Join(", ", family.Routes.Select(route => ToVariableName(route.Name)));
+            switch (family.ResiliencePolicy)
+            {
+                case "Ordered":
+                    builder.AppendLine($"using IChatClient {familyVariable} =");
+                    builder.AppendLine($"    new OrderedFailoverChatClient([{candidates}]);");
+                    break;
+                case "Cooldown":
+                    builder.AppendLine($"using IChatClient {familyVariable} =");
+                    builder.AppendLine($"    new CooldownFailoverChatClient([{candidates}],");
+                    builder.AppendLine($"        TimeSpan.FromSeconds({family.CooldownSeconds}));");
+                    break;
+                default:
+                    builder.AppendLine($"IChatClient {familyVariable} = {ToVariableName(family.Routes[0].Name)};");
+                    break;
+            }
+
+            builder.AppendLine();
+        }
+
+        string selectorVariable;
         if (configuration.SelectionPolicy == "Semantic")
         {
-            builder.AppendLine("using var semantic = new SemanticRoutingChatClient(");
-            builder.AppendLine("    embeddings, clientProfiles, defaultClient,");
-            builder.AppendLine($"    scoreThreshold: {configuration.ScoreThreshold:0.00}f, topK: {configuration.TopK});");
-            builder.AppendLine();
-            selectedClient = "semantic";
+            builder.AppendLine("using var selector = new SemanticRoutingChatClient(");
+            builder.AppendLine("    embeddings,");
+            builder.AppendLine("    new Dictionary<IChatClient, IReadOnlyList<string>>");
+            builder.AppendLine("    {");
+            foreach (RouteFamilyDefinition family in configuration.Families.Where(family => !family.IsDefault))
+            {
+                builder.AppendLine($"        [{ToVariableName(family.Name)}Route] = [/* {family.ProfileExamples} */],");
+            }
+
+            builder.AppendLine("    },");
+            RouteFamilyDefinition defaultFamily =
+                configuration.Families.FirstOrDefault(family => family.IsDefault) ??
+                configuration.Families[^1];
+            builder.AppendLine($"    defaultClient: {ToVariableName(defaultFamily.Name)}Route,");
+            builder.AppendLine($"    scoreThreshold: {configuration.ScoreThreshold:0.00}f,");
+            builder.AppendLine($"    topK: {configuration.TopK});");
+            selectorVariable = "selector";
         }
         else if (configuration.SelectionPolicy == "Callback")
         {
-            builder.AppendLine("using var callback = RoutingChatClient.Create((context, ct) =>");
-            builder.AppendLine("    new(isComplex(context) ? highEffort : lowEffort));");
-            builder.AppendLine();
-            selectedClient = "callback";
-        }
-
-        if (configuration.ResiliencePolicy == "Ordered")
-        {
-            string candidates = string.Join(", ", new[] { selectedClient }
-                .Concat(configuration.Routes
-                    .Select(route => ToVariableName(route.Name))
-                    .Where(name => name != selectedClient)));
-            builder.AppendLine($"using var pipeline = new OrderedFailoverChatClient([{candidates}]);");
-        }
-        else if (configuration.ResiliencePolicy == "Cooldown")
-        {
-            string candidates = string.Join(", ", configuration.Routes.Select(route => ToVariableName(route.Name)));
-            builder.AppendLine($"using var pipeline = new CooldownFailoverChatClient([{candidates}],");
-            builder.AppendLine($"    cooldown: TimeSpan.FromSeconds({configuration.CooldownSeconds}));");
+            builder.AppendLine("using var selector = RoutingChatClient.Create((context, ct) =>");
+            builder.AppendLine("    new(isComplex(context)");
+            builder.AppendLine($"        ? {ToVariableName(configuration.Families.Last().Name)}Route");
+            builder.AppendLine($"        : {ToVariableName(configuration.Families.First().Name)}Route));");
+            selectorVariable = "selector";
         }
         else
         {
-            builder.AppendLine($"IChatClient pipeline = {selectedClient};");
+            selectorVariable = $"{ToVariableName(configuration.Families[0].Name)}Route";
+        }
+
+        if (configuration.GlobalFallbackEnabled)
+        {
+            builder.AppendLine();
+            builder.AppendLine($"using var pipeline = new OrderedFailoverChatClient(");
+            builder.AppendLine($"    [{selectorVariable}, {ToVariableName(configuration.GlobalFallback.Name)}]);");
+        }
+        else
+        {
+            builder.AppendLine();
+            builder.AppendLine($"IChatClient pipeline = {selectorVariable};");
         }
 
         return builder.ToString().TrimEnd();
@@ -1019,81 +1468,125 @@ public partial class Home
         return char.IsDigit(result[0]) ? $"route{result}" : result;
     }
 
-    private static PipelineConfiguration CreateSemanticFailoverScenario() =>
+    private static PipelineConfiguration CreateSemanticCompositionScenario() =>
         new()
         {
-            ScenarioId = "semantic-failover",
-            ScenarioName = "Semantic plus failover",
+            ScenarioId = "semantic-composition",
+            ScenarioName = "Semantic route families",
             SelectionPolicy = "Semantic",
-            ResiliencePolicy = "Ordered",
             ScoreThreshold = 0.35,
             TopK = 3,
             ScoreAggregation = "Mean",
-            MaximumAttempts = 3,
-            Routes =
+            GlobalFallbackEnabled = true,
+            Families =
             [
-                CreateRoute(
-                    "code",
+                CreateFamily(
+                    "coding",
                     "Programming",
-                    "gpt-5.5",
-                    "high",
-                    0.2,
-                    "You are a precise programming assistant. Prefer concrete code and clear tradeoffs.",
-                    "code, bug, refactor, function, csharp, dependency injection, api"),
-                CreateRoute(
+                    "code, bug, refactor, function, csharp, dependency injection, api",
+                    "Ordered",
+                    [
+                        CreateRoute(
+                            "coding-primary",
+                            "Primary coding model",
+                            "gpt-5.5",
+                            "high",
+                            0.2,
+                            "You are a precise programming assistant. Prefer concrete code and clear tradeoffs."),
+                        CreateRoute(
+                            "coding-backup",
+                            "Backup coding model",
+                            "gpt-5.4",
+                            "medium",
+                            0.2,
+                            "You are a concise programming assistant and coding fallback."),
+                    ]),
+                CreateFamily(
                     "creative",
                     "Writing",
-                    "gpt-5.4",
-                    "low",
-                    0.8,
-                    "You are a concise, vivid creative partner.",
-                    "write, poem, story, brainstorm, names, announcement, creative"),
-                CreateRoute(
+                    "write, poem, story, brainstorm, names, announcement, creative",
+                    "Cooldown",
+                    [
+                        CreateRoute(
+                            "creative-primary",
+                            "Primary creative model",
+                            "gpt-5.4",
+                            "low",
+                            0.8,
+                            "You are a concise, vivid creative partner."),
+                        CreateRoute(
+                            "creative-backup",
+                            "Backup creative model",
+                            "gpt-5-mini",
+                            "low",
+                            0.7,
+                            "You are a quick creative fallback."),
+                    ],
+                    cooldownSeconds: 30),
+                CreateFamily(
                     "general",
                     "Default",
-                    "gpt-4o-mini",
-                    "low",
-                    0.3,
-                    "You are a helpful general-purpose assistant.",
                     "general questions, everyday help",
+                    "None",
+                    [
+                        CreateRoute(
+                            "general",
+                            "General model",
+                            "gpt-4o-mini",
+                            "low",
+                            0.3,
+                            "You are a helpful general-purpose assistant."),
+                    ],
                     isDefault: true),
             ],
+            GlobalFallback = CreateRoute(
+                "global-emergency",
+                "Whole-pipeline fallback",
+                "gpt-4o-mini",
+                "low",
+                0.2,
+                "Provide a concise response when the selected route family is unavailable."),
         };
 
-    private static PipelineConfiguration CreateOrderedScenario() =>
+    private static PipelineConfiguration CreateSemanticOrderedScenario() =>
         new()
         {
-            ScenarioId = "ordered",
-            ScenarioName = "Ordered failover",
-            SelectionPolicy = "None",
-            ResiliencePolicy = "Ordered",
-            MaximumAttempts = 3,
-            Routes =
+            ScenarioId = "semantic-ordered",
+            ScenarioName = "Semantic over ordered chains",
+            SelectionPolicy = "Semantic",
+            ScoreThreshold = 0.35,
+            TopK = 3,
+            ScoreAggregation = "Mean",
+            GlobalFallbackEnabled = false,
+            Families =
             [
-                CreateRoute(
-                    "primary",
-                    "Primary",
-                    "gpt-5.5",
-                    "high",
-                    0.2,
-                    "Handle requests with the strongest configured model.",
-                    "primary"),
-                CreateRoute(
-                    "backup",
-                    "Backup",
-                    "gpt-5.4",
-                    "medium",
-                    0.3,
-                    "Handle requests when the primary is unavailable.",
-                    "backup"),
-                CreateRoute(
-                    "emergency",
-                    "Last resort",
-                    "gpt-4o-mini",
-                    "low",
-                    0.3,
-                    "Provide a concise answer as the final fallback.",
-                    "fallback",
+                CreateFamily(
+                    "coding",
+                    "Programming",
+                    "code, bug, refactor, function, csharp, api",
+                    "Ordered",
+                    [
+                        CreateRoute("coding-primary", "Primary", "gpt-5.5", "high", 0.2, "Handle difficult coding work."),
+                        CreateRoute("coding-backup", "Backup", "gpt-5.4", "medium", 0.2, "Back up coding requests."),
+                    ]),
+                CreateFamily(
+                    "writing",
+                    "Writing",
+                    "write, poem, story, announcement, brainstorm",
+                    "Ordered",
+                    [
+                        CreateRoute("writing-primary", "Primary", "gpt-5.4", "low", 0.8, "Handle creative writing."),
+                        CreateRoute("writing-backup", "Backup", "gpt-5-mini", "low", 0.7, "Back up creative requests."),
+                    ]),
+                CreateFamily(
+                    "general",
+                    "Default",
+                    "general questions, everyday help",
+                    "Ordered",
+                    [
+                        CreateRoute("general-primary", "Primary", "gpt-5-mini", "low", 0.3, "Handle general requests."),
+                        CreateRoute("general-backup", "Backup", "gpt-4o-mini", "low", 0.3, "Back up general requests."),
+                    ],
                     isDefault: true),
             ],
         };
@@ -1102,38 +1595,22 @@ public partial class Home
         new()
         {
             ScenarioId = "cooldown",
-            ScenarioName = "Cooldown failover",
+            ScenarioName = "Cooldown route family",
             SelectionPolicy = "None",
-            ResiliencePolicy = "Cooldown",
-            MaximumAttempts = 3,
-            CooldownSeconds = 30,
-            Routes =
+            GlobalFallbackEnabled = false,
+            Families =
             [
-                CreateRoute(
-                    "primary",
-                    "Primary",
-                    "gpt-5.5",
-                    "high",
-                    0.2,
-                    "Handle requests while healthy.",
-                    "primary"),
-                CreateRoute(
-                    "regional-backup",
-                    "Backup",
-                    "gpt-5.4",
-                    "medium",
-                    0.3,
-                    "Handle requests while the primary is cooling down.",
-                    "backup"),
-                CreateRoute(
-                    "last-resort",
-                    "Last resort",
-                    "gpt-4o-mini",
-                    "low",
-                    0.3,
-                    "Provide a concise answer when stronger routes are unavailable.",
-                    "fallback",
-                    isDefault: true),
+                CreateFamily(
+                    "request",
+                    "All requests",
+                    "all requests",
+                    "Cooldown",
+                    [
+                        CreateRoute("primary", "Primary", "gpt-5.5", "high", 0.2, "Handle requests while healthy."),
+                        CreateRoute("regional-backup", "Backup", "gpt-5.4", "medium", 0.3, "Handle requests while the primary cools."),
+                        CreateRoute("last-resort", "Last resort", "gpt-4o-mini", "low", 0.3, "Provide a concise fallback."),
+                    ],
+                    cooldownSeconds: 30),
             ],
         };
 
@@ -1141,38 +1618,56 @@ public partial class Home
         new()
         {
             ScenarioId = "reasoning",
-            ScenarioName = "Reasoning-level router",
+            ScenarioName = "Reasoning-level families",
             SelectionPolicy = "Callback",
-            ResiliencePolicy = "Ordered",
-            MaximumAttempts = 3,
-            Routes =
+            GlobalFallbackEnabled = true,
+            Families =
             [
-                CreateRoute(
-                    "fast",
+                CreateFamily(
+                    "routine",
                     "Routine requests",
-                    "gpt-5.4",
-                    "low",
-                    0.2,
-                    "Answer routine requests quickly and directly.",
-                    "simple, routine"),
-                CreateRoute(
+                    "simple, routine",
+                    "None",
+                    [
+                        CreateRoute("fast", "Low reasoning wrapper", "gpt-5.4", "low", 0.2, "Answer routine requests quickly."),
+                    ]),
+                CreateFamily(
                     "deep",
                     "Complex requests",
-                    "gpt-5.4",
-                    "high",
-                    0.2,
-                    "Analyze complex requests carefully before answering.",
-                    "complex, architecture, analyze"),
-                CreateRoute(
-                    "fallback",
-                    "Last resort",
-                    "gpt-4o-mini",
-                    "low",
-                    0.3,
-                    "Provide a concise fallback answer.",
-                    "fallback",
-                    isDefault: true),
+                    "complex, architecture, analyze",
+                    "Ordered",
+                    [
+                        CreateRoute("deep-primary", "High reasoning wrapper", "gpt-5.4", "high", 0.2, "Analyze complex requests carefully."),
+                        CreateRoute("deep-backup", "Medium reasoning wrapper", "gpt-5.4", "medium", 0.2, "Back up complex requests."),
+                    ]),
             ],
+            GlobalFallback = CreateRoute(
+                "global-emergency",
+                "Whole-pipeline fallback",
+                "gpt-4o-mini",
+                "low",
+                0.2,
+                "Provide a concise response if a selected reasoning route fails."),
+        };
+
+    private static RouteFamilyDefinition CreateFamily(
+        string name,
+        string purpose,
+        string profileExamples,
+        string resiliencePolicy,
+        List<RouteDefinition> routes,
+        bool isDefault = false,
+        int cooldownSeconds = 30) =>
+        new()
+        {
+            Name = name,
+            Purpose = purpose,
+            ProfileExamples = profileExamples,
+            ResiliencePolicy = resiliencePolicy,
+            MaximumAttempts = resiliencePolicy == "None" ? 1 : routes.Count,
+            CooldownSeconds = cooldownSeconds,
+            Routes = routes,
+            IsDefault = isDefault,
         };
 
     private static RouteDefinition CreateRoute(
@@ -1181,9 +1676,7 @@ public partial class Home
         string modelId,
         string reasoningEffort,
         double temperature,
-        string instructions,
-        string profileExamples,
-        bool isDefault = false) =>
+        string instructions) =>
         new()
         {
             Name = name,
@@ -1192,8 +1685,6 @@ public partial class Home
             ReasoningEffort = reasoningEffort,
             Temperature = temperature,
             Instructions = instructions,
-            ProfileExamples = profileExamples,
-            IsDefault = isDefault,
         };
 
     private static string CreateSessionId() => $"session_{Guid.NewGuid():N}"[..16];
@@ -1217,4 +1708,35 @@ public partial class Home
         _requestCancellation?.Dispose();
         _lifetimeCancellation.Dispose();
     }
+
+    private sealed class RequestExecutionContext
+    {
+        public int AttemptNumber { get; set; }
+    }
+
+    private enum InvocationOutcomeKind
+    {
+        Succeeded,
+        Failed,
+        Canceled,
+    }
+
+    private sealed record InvocationOutcome(
+        InvocationOutcomeKind Kind,
+        string? Failure = null,
+        bool PermanentFailure = false)
+    {
+        public static InvocationOutcome Succeeded() => new(InvocationOutcomeKind.Succeeded);
+
+        public static InvocationOutcome Failed(string failure, bool permanentFailure = false) =>
+            new(InvocationOutcomeKind.Failed, failure, permanentFailure);
+
+        public static InvocationOutcome Canceled() => new(InvocationOutcomeKind.Canceled);
+    }
+
+    private sealed record RouteLocation(
+        string FamilyId,
+        string FamilyName,
+        RouteDefinition Route,
+        bool IsGlobalFallback);
 }

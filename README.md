@@ -10,15 +10,28 @@ interactive chat with live routing diagnostics.
 The central product decision is that semantic routing and failover are not
 exclusive modes:
 
-- A selection policy decides which client should handle a request.
-- A resilience policy decides what to try next if that invocation fails.
+- A selection policy chooses a stable **route-family client**.
+- Each route family can be a single configured model, an
+  `OrderedFailoverChatClient`, or a custom cooldown client.
+- An optional outer failover can catch an exhausted route family with a global
+  emergency model.
 - Because every router is an `IChatClient`, those policies can be composed.
 
-The build step separates **selection**, **resilience**, and **per-route model
-configuration** rather than offering only a semantic-versus-ordered-failover
-switch. Structural configuration is reviewed once and built into a pipeline.
-The chat screen keeps only runtime health controls, conversation, and debug
-information visible.
+The build step uses an interactive tree instead of a semantic-versus-failover
+switch:
+
+```text
+OrderedFailoverChatClient
+|-- SemanticRoutingChatClient
+|   |-- coding -> OrderedFailover[coding-primary, coding-backup]
+|   |-- creative -> CooldownFailover[creative-primary, creative-backup]
+|   `-- general -> general
+`-- global-emergency
+```
+
+Selecting any tree node opens its contextual settings. Structural
+configuration is reviewed once and built into a pipeline; the chat screen keeps
+runtime health controls, conversation, and debug information visible.
 
 ## Run
 
@@ -30,14 +43,16 @@ The current prototype is deterministic and does not require an API key.
 
 ## Included
 
-- Guided scenario, policy, route, and review steps.
-- Semantic, callback, ordered failover, and cooldown policy shapes.
+- Guided scenario, outer-shape, interactive composition, and review steps.
+- Semantic profiles that target single clients or independent ordered/cooldown
+  failover chains.
+- Optional whole-pipeline emergency fallback.
 - Per-route OpenAI model, reasoning, temperature, instruction, and token
   controls.
 - Simulated streaming and non-streaming chat.
 - Fail-next, timed kill, kill-until-revived, and revive controls.
 - Semantic score evidence, event timeline, effective options, and
-  `FailoverChatClientAttempt`-shaped diagnostics.
+  nested `FailoverChatClientAttempt`-shaped diagnostics.
 - Responsive, sans-serif visual system with no external UI dependency.
 
 The next implementation layer is replacing the simulator with real

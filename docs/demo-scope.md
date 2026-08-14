@@ -97,13 +97,12 @@ Recommended steps:
 
 1. **Choose a starting scenario.** Start from scratch or prefill the form with
    a scenario.
-2. **Choose policies.** Select the routing/selection policy and optional
-   resilience policy.
-3. **Configure routes.** Add named routes, choose models and options, edit
-   semantic profiles, and order failover candidates.
-4. **Configure behavior.** Set semantic scoring, maximum attempts, cooldown
-   behavior, and initial simulated availability.
-5. **Review and build.** Show the pipeline tree, key option values, warnings,
+2. **Choose the outer shape.** Select the top-level routing policy and whether
+   an exhausted route family should fall back to a global emergency client.
+3. **Compose the interactive tree.** Add semantic route families, choose a
+   single, ordered, or cooldown target for each family, and configure its model
+   leaves.
+4. **Review and build.** Show the pipeline tree, key option values, warnings,
    and an optional equivalent C# preview, then create the pipeline and enter
    chat.
 
@@ -111,9 +110,10 @@ Starting scenarios are accelerators inside the first step:
 
 | Preset | Purpose |
 | --- | --- |
-| Semantic specialists | Route coding, creative, and general requests by example utterances |
+| Semantic route families | Select coding, creative, and general family clients whose targets have independent resilience |
+| Semantic over ordered chains | Map every semantic profile to its own `OrderedFailoverChatClient` |
 | Ordered failover | Walk a ranked list after deterministic pre-output failures |
-| Semantic plus failover | Compose a semantic router as the first entry in a failover chain |
+| Semantic plus outer fallback | Wrap the semantic router and a global emergency client in ordered failover |
 | Observable failover | Expose exact `FailoverChatClientAttempt` records from a custom `FailoverChatClient` |
 | Cooldown failover | Temporarily or indefinitely kill routes and let a custom policy skip unhealthy clients |
 | Reasoning-level router | Route between low- and high-reasoning wrappers over one model |
@@ -123,9 +123,9 @@ Starting scenarios are accelerators inside the first step:
 Each scenario only prefills the guided form. The user can change every value
 before selecting **Build and start chat**.
 
-The first version should use structured steps and route cards, not a free-form
-graph editor. Reordering routes and choosing a router as a failover entry is
-enough to prove composition.
+The first version uses a constrained interactive tree rather than a free-form
+graph editor. A user selects a selector, route-family, resilience, model, or
+outer-fallback node and edits only that node's valid settings.
 
 The final review contains:
 
@@ -138,9 +138,19 @@ The final review contains:
 
 Import/export can be added after the core build-to-chat flow is complete.
 
-### 2. Route configuration during build
+### 2. Route-family configuration during build
 
-Each route has:
+Each semantic profile maps to one stable route-family `IChatClient`. That
+family target can be:
+
+- One configured model client.
+- An `OrderedFailoverChatClient` containing compatible model clients.
+- A custom `CooldownFailoverChatClient` containing compatible model clients.
+
+The semantic router therefore keeps stable profile references while resilience
+runs inside the selected family.
+
+Each model leaf has:
 
 - Stable route ID and display name.
 - Provider mode: simulated or OpenAI.
@@ -307,14 +317,20 @@ output commitment and can be retried.
 
 ### Semantic plus failover composition
 
-Place a `SemanticRoutingChatClient` in an ordered failover list with an
-emergency client after it. Fail the specialist chosen inside the semantic
-router and show the outer failover selecting the emergency client.
+Use both composition directions:
+
+1. Map each semantic profile to a single client, ordered failover chain, or
+   cooldown chain. Semantic selection chooses the route family, then compatible
+   models fail over inside it.
+2. Optionally place the complete `SemanticRoutingChatClient` in an outer
+   ordered failover list with an emergency client after it.
 
 The route graph and timeline must make the nested identities clear:
 
-- Outer attempt: semantic router.
-- Inner selected route: coding, creative, or general.
+- Semantic selection: coding, creative, or general family.
+- Inner attempts: model clients belonging to that selected family.
+- Inner terminal failure: the family target propagates failure.
+- Outer attempt: semantic router as one client in the global chain.
 - Outer fallback: emergency route.
 
 ### Request-level versus route-level options

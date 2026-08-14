@@ -21,7 +21,7 @@
                 <span class="live-dot"></span>
                 <span>@ActiveConfiguration!.ScenarioName</span>
                 <span class="topbar-separator">/</span>
-                <span>@ActiveConfiguration.SelectionPolicy + @ActiveConfiguration.ResiliencePolicy</span>
+                <span>@GetCompositionLabel(ActiveConfiguration)</span>
             </div>
 
             <button class="button button-quiet" type="button" @onclick="RebuildPipeline">
@@ -40,11 +40,12 @@
             <section class="builder-intro">
                 <div>
                     <span class="eyebrow">Extensible routing playground</span>
-                    <h1>Build the pipeline.<br />Then watch it route.</h1>
+                    <h1>Compose the tree.<br />Then watch it route.</h1>
                 </div>
                 <p>
-                    Configure selection, failover, and model behavior in a few steps.
-                    The resulting pipeline opens directly into an inspectable chat.
+                    Semantic profiles can target individual models or complete
+                    ordered and cooldown failover chains. Build the client tree,
+                    then inspect it live in chat.
                 </p>
             </section>
 
@@ -72,9 +73,9 @@
                         <div class="section-heading">
                             <div>
                                 <span class="eyebrow">Start with a shape</span>
-                                <h2>Choose a scenario</h2>
+                                <h2>Choose a composition</h2>
                             </div>
-                            <p>Each scenario is fully editable before the pipeline is built.</p>
+                            <p>Each scenario prefills an editable client tree.</p>
                         </div>
 
                         <div class="scenario-grid">
@@ -85,7 +86,7 @@
                                         @onclick="() => SelectScenario(scenario.Id)">
                                     <span class="scenario-topline">
                                         <span class="scenario-icon">@GetScenarioMonogram(scenario.Id)</span>
-                                        @if (scenario.Id == "semantic-failover")
+                                        @if (scenario.Id == "semantic-composition")
                                         {
                                             <span class="recommended-label">Recommended</span>
                                         }
@@ -96,7 +97,7 @@
                                     <span class="scenario-policies">
                                         <span>@scenario.SelectionPolicy</span>
                                         <span class="policy-arrow">-&gt;</span>
-                                        <span>@scenario.ResiliencePolicy</span>
+                                        <span>@scenario.Composition</span>
                                     </span>
                                 </button>
                             }
@@ -106,18 +107,21 @@
                     case 1:
                         <div class="section-heading">
                             <div>
-                                <span class="eyebrow">Compose behavior</span>
-                                <h2>Choose the routing layers</h2>
+                                <span class="eyebrow">Set the outer shape</span>
+                                <h2>Choose selection and escape hatch</h2>
                             </div>
-                            <p>Selection chooses the first client. Resilience decides what happens after failure.</p>
+                            <p>
+                                Resilience is configured inside each route family.
+                                An optional outer fallback catches an exhausted family.
+                            </p>
                         </div>
 
                         <div class="policy-section">
                             <div class="policy-section-header">
                                 <span class="layer-number">01</span>
                                 <div>
-                                    <h3>Selection</h3>
-                                    <p>Which route should receive the request first?</p>
+                                    <h3>Top-level selection</h3>
+                                    <p>Which stable route-family client should receive the request?</p>
                                 </div>
                             </div>
                             <div class="policy-options">
@@ -125,7 +129,7 @@
                                 {
                                     <button class="policy-option @(Draft.SelectionPolicy == option.Value ? "selected" : null)"
                                             type="button"
-                                            @onclick="() => Draft.SelectionPolicy = option.Value">
+                                            @onclick="() => SetSelectionPolicy(option.Value)">
                                         <span class="radio-mark"></span>
                                         <span>
                                             <strong>@option.Label</strong>
@@ -169,126 +173,289 @@
                             <div class="policy-section-header">
                                 <span class="layer-number">02</span>
                                 <div>
-                                    <h3>Resilience</h3>
-                                    <p>What should happen when an invocation fails?</p>
+                                    <h3>Whole-pipeline fallback</h3>
+                                    <p>Wrap the selector in an outer ordered failover with one emergency client.</p>
                                 </div>
                             </div>
-                            <div class="policy-options">
-                                @foreach (var option in ResilienceOptions)
-                                {
-                                    <button class="policy-option @(Draft.ResiliencePolicy == option.Value ? "selected" : null)"
-                                            type="button"
-                                            @onclick="() => Draft.ResiliencePolicy = option.Value">
-                                        <span class="radio-mark"></span>
-                                        <span>
-                                            <strong>@option.Label</strong>
-                                            <small>@option.Description</small>
-                                        </span>
-                                    </button>
-                                }
+                            <div class="outer-fallback-options">
+                                <button class="outer-option @(!Draft.GlobalFallbackEnabled ? "selected" : null)"
+                                        type="button"
+                                        @onclick="() => SetGlobalFallback(false)">
+                                    <span class="radio-mark"></span>
+                                    <span>
+                                        <strong>No outer fallback</strong>
+                                        <small>An exhausted route family ends the request.</small>
+                                    </span>
+                                </button>
+                                <button class="outer-option @(Draft.GlobalFallbackEnabled ? "selected" : null)"
+                                        type="button"
+                                        @onclick="() => SetGlobalFallback(true)">
+                                    <span class="radio-mark"></span>
+                                    <span>
+                                        <strong>Emergency fallback</strong>
+                                        <small>OrderedFailover[selector, global-emergency]</small>
+                                    </span>
+                                </button>
                             </div>
-
-                            @if (Draft.ResiliencePolicy != "None")
+                            @if (Draft.GlobalFallbackEnabled)
                             {
-                                <div class="inline-settings resilience-settings">
-                                    <label>
-                                        <span>Maximum attempts</span>
-                                        <select @bind="Draft.MaximumAttempts">
-                                            <option value="1">1</option>
-                                            <option value="2">2</option>
-                                            <option value="3">3</option>
-                                            <option value="4">4</option>
-                                        </select>
-                                    </label>
-                                    @if (Draft.ResiliencePolicy == "Cooldown")
-                                    {
-                                        <label>
-                                            <span>Cooldown</span>
-                                            <select @bind="Draft.CooldownSeconds">
-                                                <option value="10">10 seconds</option>
-                                                <option value="30">30 seconds</option>
-                                                <option value="60">60 seconds</option>
-                                            </select>
-                                        </label>
-                                    }
+                                <div class="outer-fallback-summary">
+                                    <span class="route-dot emergency"></span>
+                                    <div>
+                                        <strong>@Draft.GlobalFallback.Name</strong>
+                                        <small>@Draft.GlobalFallback.ModelId / edit this leaf in the tree</small>
+                                    </div>
                                 </div>
                             }
                         </div>
                         break;
 
                     case 2:
-                        <div class="section-heading">
+                        <div class="section-heading tree-step-heading">
                             <div>
-                                <span class="eyebrow">Configure candidates</span>
-                                <h2>Set up the routes</h2>
+                                <span class="eyebrow">Edit by node</span>
+                                <h2>Compose the client tree</h2>
                             </div>
-                            <button class="button button-secondary" type="button" @onclick="AddRoute">
-                                Add route
+                            <button class="button button-secondary" type="button" @onclick="AddFamily">
+                                Add route family
                             </button>
                         </div>
 
-                        <div class="route-list">
-                            @for (var i = 0; i < Draft.Routes.Count; i++)
-                            {
-                                RouteDefinition route = Draft.Routes[i];
-                                var routeIndex = i;
+                        <div class="composition-editor">
+                            <section class="tree-canvas">
+                                <header class="tree-canvas-header">
+                                    <div>
+                                        <strong>Pipeline</strong>
+                                        <small>Select a node to edit it</small>
+                                    </div>
+                                    <div class="tree-legend">
+                                        <span><i class="legend-selector"></i>selector</span>
+                                        <span><i class="legend-family"></i>profile</span>
+                                        <span><i class="legend-model"></i>model</span>
+                                    </div>
+                                </header>
 
-                                <article class="route-editor" @key="route.Id">
-                                    <header class="route-editor-header">
-                                        <div class="route-order">@(i + 1)</div>
-                                        <div>
-                                            <span class="route-kind">Named IChatClient</span>
-                                            <strong>@(string.IsNullOrWhiteSpace(route.Name) ? "Untitled route" : route.Name)</strong>
-                                        </div>
-                                        <div class="route-editor-actions">
-                                            @if (route.IsDefault)
-                                            {
-                                                <span class="default-label">Default</span>
-                                            }
-                                            else if (Draft.SelectionPolicy == "Semantic")
-                                            {
-                                                <button class="text-button" type="button" @onclick="() => MakeDefault(route)">
-                                                    Make default
-                                                </button>
-                                            }
-                                            <button class="icon-button" type="button" title="Move route up"
-                                                    disabled="@(routeIndex == 0)"
-                                                    @onclick="() => MoveRoute(routeIndex, -1)">Up</button>
-                                            <button class="icon-button" type="button" title="Move route down"
-                                                    disabled="@(routeIndex == Draft.Routes.Count - 1)"
-                                                    @onclick="() => MoveRoute(routeIndex, 1)">Down</button>
-                                            <button class="icon-button danger" type="button" title="Remove route"
-                                                    disabled="@(Draft.Routes.Count <= 2)"
-                                                    @onclick="() => RemoveRoute(route)">Remove</button>
-                                        </div>
-                                    </header>
+                                <div class="interactive-tree-scroll">
+                                    <PipelineTree Configuration="Draft"
+                                                  Interactive="true"
+                                                  @bind-SelectedNodeKey="SelectedNodeKey" />
+                                </div>
 
-                                    <div class="route-fields">
+                                <footer class="tree-canvas-footer">
+                                    <span>@Draft.Families.Count route families</span>
+                                    <span>@Draft.AllRoutes().Count() model clients</span>
+                                </footer>
+                            </section>
+
+                            <section class="node-inspector">
+                                <header class="node-inspector-header">
+                                    <span class="node-type-label">@GetSelectedNodeType()</span>
+                                    <h3>@GetSelectedNodeTitle()</h3>
+                                    <p>@GetSelectedNodeDescription()</p>
+                                </header>
+
+                                @if (SelectedNodeKey is "selector" or "outer")
+                                {
+                                    <div class="inspector-fields">
+                                        <div class="inspector-callout">
+                                            <span class="callout-glyph">@(Draft.SelectionPolicy == "Semantic" ? "SR" : Draft.SelectionPolicy == "Callback" ? "CB" : "DR")</span>
+                                            <div>
+                                                <strong>@GetSelectorTypeName(Draft)</strong>
+                                                <p>
+                                                    This node selects a route family. Each family is itself an
+                                                    <code>IChatClient</code>, so its target can be a failover chain.
+                                                </p>
+                                            </div>
+                                        </div>
+
                                         <label>
-                                            <span>Route name</span>
-                                            <input type="text" @bind="route.Name" />
-                                        </label>
-                                        <label>
-                                            <span>Purpose</span>
-                                            <input type="text" @bind="route.Purpose" />
-                                        </label>
-                                        <label class="model-field">
-                                            <span>OpenAI model</span>
-                                            <select @bind="route.ModelId">
-                                                @foreach (string model in ModelOptions)
-                                                {
-                                                    <option value="@model">@model</option>
-                                                }
+                                            <span>Selection policy</span>
+                                            <select value="@Draft.SelectionPolicy"
+                                                    @onchange="OnSelectionChanged">
+                                                <option>Semantic</option>
+                                                <option>Callback</option>
+                                                <option>None</option>
                                             </select>
                                         </label>
-                                        <label>
-                                            <span>Max output tokens</span>
-                                            <input type="number" min="64" max="16000" step="64"
-                                                   @bind="route.MaxOutputTokens" />
+
+                                        @if (Draft.SelectionPolicy == "Semantic")
+                                        {
+                                            <div class="inspector-grid three">
+                                                <label>
+                                                    <span>Threshold</span>
+                                                    <input type="number" min="0" max="1" step="0.05"
+                                                           @bind="Draft.ScoreThreshold" />
+                                                </label>
+                                                <label>
+                                                    <span>Top K</span>
+                                                    <select @bind="Draft.TopK">
+                                                        <option value="1">1</option>
+                                                        <option value="3">3</option>
+                                                        <option value="5">5</option>
+                                                    </select>
+                                                </label>
+                                                <label>
+                                                    <span>Aggregation</span>
+                                                    <select @bind="Draft.ScoreAggregation">
+                                                        <option>Mean</option>
+                                                        <option>Sum</option>
+                                                    </select>
+                                                </label>
+                                            </div>
+                                        }
+
+                                        <label class="check-field">
+                                            <input type="checkbox" @bind="Draft.GlobalFallbackEnabled" />
+                                            <span>
+                                                <strong>Outer emergency fallback</strong>
+                                                <small>Wrap the selector and emergency client in OrderedFailoverChatClient.</small>
+                                            </span>
                                         </label>
                                     </div>
+                                }
+                                else if (SelectedFamily is not null && SelectedRoute is null)
+                                {
+                                    RouteFamilyDefinition family = SelectedFamily;
+                                    <div class="inspector-fields">
+                                        <div class="inspector-grid two">
+                                            <label>
+                                                <span>Family name</span>
+                                                <input type="text" @bind="family.Name" />
+                                            </label>
+                                            <label>
+                                                <span>Purpose</span>
+                                                <input type="text" @bind="family.Purpose" />
+                                            </label>
+                                        </div>
 
-                                    <div class="route-options-row">
+                                        @if (Draft.SelectionPolicy == "Semantic")
+                                        {
+                                            <label>
+                                                <span>Semantic profile examples <small>comma separated</small></span>
+                                                <textarea rows="3" @bind="family.ProfileExamples"></textarea>
+                                            </label>
+
+                                            <label class="check-field">
+                                                <input type="radio"
+                                                       name="default-family"
+                                                       checked="@family.IsDefault"
+                                                       @onchange="() => MakeDefault(family)" />
+                                                <span>
+                                                    <strong>Default semantic family</strong>
+                                                    <small>Selected when no profile clears the threshold.</small>
+                                                </span>
+                                            </label>
+                                        }
+
+                                        <div class="field-group">
+                                            <span class="field-label">Family resilience</span>
+                                            <div class="segmented-control resilience-control">
+                                                @foreach (var option in ResilienceOptions)
+                                                {
+                                                    <button type="button"
+                                                            class="@(family.ResiliencePolicy == option.Value ? "selected" : null)"
+                                                            @onclick="() => SetFamilyResilience(family, option.Value)">
+                                                        @option.Label
+                                                    </button>
+                                                }
+                                            </div>
+                                            <small class="field-help">@GetResilienceDescription(family.ResiliencePolicy)</small>
+                                        </div>
+
+                                        @if (family.ResiliencePolicy != "None")
+                                        {
+                                            <div class="inspector-grid two">
+                                                <label>
+                                                    <span>Maximum attempts</span>
+                                                    <select @bind="family.MaximumAttempts">
+                                                        @for (var attempt = 1; attempt <= 6; attempt++)
+                                                        {
+                                                            <option value="@attempt">@attempt</option>
+                                                        }
+                                                    </select>
+                                                </label>
+                                                @if (family.ResiliencePolicy == "Cooldown")
+                                                {
+                                                    <label>
+                                                        <span>Cooldown</span>
+                                                        <select @bind="family.CooldownSeconds">
+                                                            <option value="10">10 seconds</option>
+                                                            <option value="30">30 seconds</option>
+                                                            <option value="60">60 seconds</option>
+                                                        </select>
+                                                    </label>
+                                                }
+                                            </div>
+                                        }
+
+                                        <div class="inspector-actions">
+                                            <button class="button button-primary" type="button" @onclick="() => AddRoute(family)">
+                                                Add model client
+                                            </button>
+                                            <button class="button button-quiet" type="button"
+                                                    disabled="@IsFirstFamily(family)"
+                                                    @onclick="() => MoveFamily(family, -1)">
+                                                Move up
+                                            </button>
+                                            <button class="button button-quiet" type="button"
+                                                    disabled="@IsLastFamily(family)"
+                                                    @onclick="() => MoveFamily(family, 1)">
+                                                Move down
+                                            </button>
+                                            <button class="button button-danger" type="button"
+                                                    disabled="@(Draft.Families.Count <= 1)"
+                                                    @onclick="() => RemoveFamily(family)">
+                                                Remove family
+                                            </button>
+                                        </div>
+                                    </div>
+                                }
+                                else if (SelectedRoute is not null)
+                                {
+                                    RouteDefinition route = SelectedRoute;
+                                    RouteFamilyDefinition? family = SelectedRouteFamily;
+                                    bool isGlobal = SelectedNodeKey.StartsWith("global:", StringComparison.Ordinal);
+
+                                    <div class="inspector-fields">
+                                        @if (isGlobal)
+                                        {
+                                            <div class="inspector-callout warning">
+                                                <span class="callout-glyph">GF</span>
+                                                <div>
+                                                    <strong>Outer fallback leaf</strong>
+                                                    <p>Invoked only after the selected route-family client fails completely.</p>
+                                                </div>
+                                            </div>
+                                        }
+
+                                        <div class="inspector-grid two">
+                                            <label>
+                                                <span>Client name</span>
+                                                <input type="text" @bind="route.Name" />
+                                            </label>
+                                            <label>
+                                                <span>Purpose</span>
+                                                <input type="text" @bind="route.Purpose" />
+                                            </label>
+                                        </div>
+
+                                        <div class="inspector-grid two">
+                                            <label>
+                                                <span>OpenAI model</span>
+                                                <select @bind="route.ModelId">
+                                                    @foreach (string model in ModelOptions)
+                                                    {
+                                                        <option value="@model">@model</option>
+                                                    }
+                                                </select>
+                                            </label>
+                                            <label>
+                                                <span>Max output tokens</span>
+                                                <input type="number" min="64" max="16000" step="64"
+                                                       @bind="route.MaxOutputTokens" />
+                                            </label>
+                                        </div>
+
                                         <div class="field-group">
                                             <span class="field-label">Reasoning effort</span>
                                             <div class="segmented-control">
@@ -302,7 +469,8 @@
                                                 }
                                             </div>
                                         </div>
-                                        <label class="temperature-field">
+
+                                        <label class="temperature-field inspector-temperature">
                                             <span>
                                                 <span>Temperature</span>
                                                 <strong>@route.Temperature.ToString("0.0")</strong>
@@ -310,23 +478,35 @@
                                             <input type="range" min="0" max="1.5" step="0.1"
                                                    @bind="route.Temperature" @bind:event="oninput" />
                                         </label>
-                                    </div>
 
-                                    <div class="route-text-fields">
                                         <label>
                                             <span>Route instructions</span>
-                                            <textarea rows="2" @bind="route.Instructions"></textarea>
+                                            <textarea rows="4" @bind="route.Instructions"></textarea>
                                         </label>
-                                        @if (Draft.SelectionPolicy == "Semantic" && !route.IsDefault)
+
+                                        @if (!isGlobal && family is not null)
                                         {
-                                            <label>
-                                                <span>Semantic examples <small>comma separated</small></span>
-                                                <textarea rows="2" @bind="route.ProfileExamples"></textarea>
-                                            </label>
+                                            <div class="inspector-actions">
+                                                <button class="button button-quiet" type="button"
+                                                        disabled="@IsFirstRoute(family, route)"
+                                                        @onclick="() => MoveRoute(family, route, -1)">
+                                                    Move up
+                                                </button>
+                                                <button class="button button-quiet" type="button"
+                                                        disabled="@IsLastRoute(family, route)"
+                                                        @onclick="() => MoveRoute(family, route, 1)">
+                                                    Move down
+                                                </button>
+                                                <button class="button button-danger" type="button"
+                                                        disabled="@(family.Routes.Count <= 1)"
+                                                        @onclick="() => RemoveRoute(family, route)">
+                                                    Remove client
+                                                </button>
+                                            </div>
                                         }
                                     </div>
-                                </article>
-                            }
+                                }
+                            </section>
                         </div>
                         break;
 
@@ -334,24 +514,24 @@
                         <div class="section-heading review-heading">
                             <div>
                                 <span class="eyebrow">Ready to instantiate</span>
-                                <h2>Review the pipeline</h2>
+                                <h2>Review the composed pipeline</h2>
                             </div>
                             <label class="streaming-toggle">
                                 <input type="checkbox" @bind="Draft.Streaming" />
                                 <span class="toggle-track"><span></span></span>
                                 <span>
                                     <strong>Streaming responses</strong>
-                                    <small>Show time to first update and output commitment.</small>
+                                    <small>Expose output commitment and time to first update.</small>
                                 </span>
                             </label>
                         </div>
 
-                        <div class="review-grid">
+                        <div class="review-grid composition-review-grid">
                             <div class="review-column">
-                                <div class="review-panel pipeline-preview">
+                                <div class="review-panel pipeline-preview composition-preview">
                                     <header>
                                         <span>Pipeline graph</span>
-                                        <span class="valid-badge">Valid</span>
+                                        <span class="valid-badge">@(CanBuild ? "Valid" : "Needs attention")</span>
                                     </header>
                                     <PipelineTree Configuration="Draft" />
                                 </div>
@@ -373,18 +553,27 @@
                                     <header><span>Configuration</span></header>
                                     <dl>
                                         <div><dt>Selection</dt><dd>@Draft.SelectionPolicy</dd></div>
-                                        <div><dt>Resilience</dt><dd>@Draft.ResiliencePolicy</dd></div>
-                                        <div><dt>Routes</dt><dd>@Draft.Routes.Count</dd></div>
-                                        <div><dt>Max attempts</dt><dd>@Draft.MaximumAttempts</dd></div>
+                                        <div><dt>Route families</dt><dd>@Draft.Families.Count</dd></div>
+                                        <div><dt>Model clients</dt><dd>@Draft.AllRoutes().Count()</dd></div>
+                                        <div><dt>Outer fallback</dt><dd>@(Draft.GlobalFallbackEnabled ? Draft.GlobalFallback.Name : "None")</dd></div>
                                         @if (Draft.SelectionPolicy == "Semantic")
                                         {
                                             <div><dt>Semantic scoring</dt><dd>Top @Draft.TopK / @Draft.ScoreAggregation / @Draft.ScoreThreshold.ToString("0.00")</dd></div>
                                         }
-                                        @if (Draft.ResiliencePolicy == "Cooldown")
-                                        {
-                                            <div><dt>Cooldown</dt><dd>@Draft.CooldownSeconds seconds</dd></div>
-                                        }
                                     </dl>
+                                </div>
+
+                                <div class="family-summary-list">
+                                    @foreach (RouteFamilyDefinition family in Draft.Families)
+                                    {
+                                        <article>
+                                            <div>
+                                                <strong>@family.Name</strong>
+                                                <small>@family.Purpose</small>
+                                            </div>
+                                            <span>@family.ResiliencePolicy / @family.Routes.Count clients</span>
+                                        </article>
+                                    }
                                 </div>
 
                                 <details class="code-preview">
@@ -441,18 +630,19 @@
                 <section class="sidebar-section models-section">
                     <div class="sidebar-heading">
                         <span class="eyebrow">Model health</span>
-                        <span class="model-count">@ActiveConfiguration!.Routes.Count routes</span>
+                        <span class="model-count">@ActiveConfiguration!.AllRoutes().Count() clients</span>
                     </div>
 
                     <div class="health-list">
-                        @foreach (RouteDefinition route in ActiveConfiguration.Routes)
+                        @foreach (RouteLocation location in GetRouteLocations(ActiveConfiguration))
                         {
+                            RouteDefinition route = location.Route;
                             <article class="health-card @GetRouteStatusClass(route)" @key="route.Id">
                                 <div class="health-card-main">
                                     <span class="health-indicator"></span>
                                     <div>
                                         <strong>@route.Name</strong>
-                                        <small>@route.ModelId</small>
+                                        <small>@location.FamilyName / @route.ModelId</small>
                                     </div>
                                     <span class="health-label">@GetRouteStatusLabel(route)</span>
                                 </div>
@@ -477,7 +667,8 @@
                 <section class="sidebar-note">
                     <span class="note-icon">i</span>
                     <p>
-                        Availability is simulated. Cooldown state is maintained separately by the routing policy.
+                        A semantic profile selects a stable family client. Ordered or cooldown
+                        behavior then runs inside that family.
                     </p>
                 </section>
             </aside>
@@ -513,8 +704,8 @@
                                 <span></span>
                                 <span></span>
                             </div>
-                            <h3>Send a message through the pipeline.</h3>
-                            <p>Try a prompt, then take a model down and send it again.</p>
+                            <h3>Send a message through the tree.</h3>
+                            <p>Then kill a leaf model and watch its route family fail over internally.</p>
                             <div class="prompt-suggestions">
                                 @foreach (string suggestion in PromptSuggestions)
                                 {
@@ -556,9 +747,10 @@
                                   placeholder="Message the routing pipeline..."
                                   aria-label="Chat message"
                                   disabled="@IsSending"
-                                  @bind="Prompt"></textarea>
+                                  @bind="Prompt"
+                                  @bind:event="oninput"></textarea>
                         <div class="composer-footer">
-                            <span>Enter a prompt, then inspect the routing trace.</span>
+                            <span>Inspect semantic selection, inner attempts, and outer fallback.</span>
                             @if (IsSending)
                             {
                                 <button class="cancel-button" type="button" @onclick="CancelRequest">Cancel</button>
@@ -611,7 +803,7 @@
                         <div class="debug-empty">
                             <span class="debug-empty-icon">_</span>
                             <strong>No request selected</strong>
-                            <p>Send a chat message to populate routing evidence and attempt data.</p>
+                            <p>Send a chat message to populate selection and nested failover evidence.</p>
                         </div>
                     }
                     else if (DebugTab == "Summary")
@@ -626,9 +818,9 @@
                                 <span class="finish-reason">@CurrentDebug.FinishReason</span>
                             </div>
                             <dl>
-                                <div><dt>Selected route</dt><dd>@CurrentDebug.SelectedRoute</dd></div>
-                                <div><dt>Completed route</dt><dd>@CurrentDebug.FinalRoute</dd></div>
-                                <div><dt>Configured model</dt><dd>@CurrentDebug.ConfiguredModel</dd></div>
+                                <div><dt>Selected family</dt><dd>@CurrentDebug.SelectedRoute</dd></div>
+                                <div><dt>Completed client</dt><dd>@CurrentDebug.FinalRoute</dd></div>
+                                <div><dt>Family resilience</dt><dd>@CurrentDebug.ResiliencePolicy</dd></div>
                                 <div><dt>Actual model</dt><dd>@CurrentDebug.ActualModel</dd></div>
                             </dl>
                             <div class="usage-row">
@@ -641,7 +833,7 @@
                         {
                             <section class="debug-section">
                                 <div class="debug-section-heading">
-                                    <h3>Semantic evidence</h3>
+                                    <h3>Semantic family evidence</h3>
                                     <span>@ActiveConfiguration.ScoreAggregation / top @ActiveConfiguration.TopK</span>
                                 </div>
                                 <div class="score-list">
@@ -649,7 +841,7 @@
                                     {
                                         <div class="score-row">
                                             <div>
-                                                <strong>@score.RouteName</strong>
+                                                <strong>@score.RouteFamilyName</strong>
                                                 <small>@(string.IsNullOrWhiteSpace(score.MatchedTerms) ? "No direct terms" : score.MatchedTerms)</small>
                                             </div>
                                             <div class="score-meter">
@@ -687,7 +879,7 @@
                     {
                         <section class="debug-section attempts-section">
                             <div class="debug-section-heading">
-                                <h3>Failover attempts</h3>
+                                <h3>Leaf client attempts</h3>
                                 <span>@CurrentDebug.Attempts.Count total</span>
                             </div>
                             @if (CurrentDebug.Attempts.Count == 0)
@@ -704,7 +896,7 @@
                                                 <span class="attempt-number">@attempt.Number</span>
                                                 <div>
                                                     <strong>@attempt.RouteName</strong>
-                                                    <small>@attempt.ModelId</small>
+                                                    <small>@attempt.Layer / @attempt.ModelId</small>
                                                 </div>
                                                 <span class="attempt-status">@attempt.Status</span>
                                             </header>
@@ -713,7 +905,7 @@
                                                 <div><dt>TTFU</dt><dd>@(attempt.TimeToFirstUpdateMs is null ? "--" : $"{attempt.TimeToFirstUpdateMs} ms")</dd></div>
                                                 <div><dt>Completed</dt><dd>@FormatBoolean(attempt.ResponseCompleted)</dd></div>
                                                 <div><dt>Committed</dt><dd>@FormatBoolean(attempt.OutputCommitted)</dd></div>
-                                                <div><dt>Terminal</dt><dd>@FormatBoolean(attempt.IsTerminal)</dd></div>
+                                                <div><dt>Terminal in layer</dt><dd>@FormatBoolean(attempt.IsTerminal)</dd></div>
                                             </dl>
                                             @if (attempt.Exception is not null)
                                             {
@@ -737,16 +929,17 @@
                                 <dl>
                                     <div><dt>Streaming</dt><dd>@FormatBoolean(ActiveConfiguration.Streaming)</dd></div>
                                     <div><dt>Messages</dt><dd>@Messages.Count</dd></div>
-                                    <div><dt>Max attempts</dt><dd>@ActiveConfiguration.MaximumAttempts</dd></div>
+                                    <div><dt>Selection</dt><dd>@ActiveConfiguration.SelectionPolicy</dd></div>
                                 </dl>
                             </div>
                             <div class="layer-connector">+</div>
                             @{
-                                RouteDefinition? effectiveRoute = ActiveConfiguration.Routes.FirstOrDefault(
-                                    route => route.Name == CurrentDebug.FinalRoute);
+                                RouteDefinition? effectiveRoute = FindRouteById(
+                                    ActiveConfiguration,
+                                    CurrentDebug.FinalRouteId);
                             }
                             <div class="option-layer accent">
-                                <span>Route wrapper</span>
+                                <span>Leaf route wrapper</span>
                                 @if (effectiveRoute is not null)
                                 {
                                     <dl>
@@ -759,7 +952,7 @@
                                 }
                                 else
                                 {
-                                    <p>No route completed the request.</p>
+                                    <p>No leaf client completed the request.</p>
                                 }
                             </div>
 

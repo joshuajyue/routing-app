@@ -2,13 +2,11 @@ namespace RoutingDemo.Web.Demo;
 
 public sealed class PipelineConfiguration
 {
-    public string ScenarioId { get; set; } = "semantic-failover";
+    public string ScenarioId { get; set; } = "semantic-composition";
 
-    public string ScenarioName { get; set; } = "Semantic plus failover";
+    public string ScenarioName { get; set; } = "Semantic route families";
 
     public string SelectionPolicy { get; set; } = "Semantic";
-
-    public string ResiliencePolicy { get; set; } = "Ordered";
 
     public double ScoreThreshold { get; set; } = 0.35;
 
@@ -16,13 +14,37 @@ public sealed class PipelineConfiguration
 
     public string ScoreAggregation { get; set; } = "Mean";
 
-    public int MaximumAttempts { get; set; } = 3;
+    public bool GlobalFallbackEnabled { get; set; } = true;
 
-    public int CooldownSeconds { get; set; } = 30;
+    public RouteDefinition GlobalFallback { get; set; } = new()
+    {
+        Name = "global-emergency",
+        Purpose = "Whole-pipeline fallback",
+        ModelId = "gpt-4o-mini",
+        ReasoningEffort = "low",
+        Temperature = 0.2,
+        Instructions = "Provide a concise response when the selected route family is unavailable.",
+    };
 
     public bool Streaming { get; set; } = true;
 
-    public List<RouteDefinition> Routes { get; set; } = [];
+    public List<RouteFamilyDefinition> Families { get; set; } = [];
+
+    public IEnumerable<RouteDefinition> AllRoutes()
+    {
+        foreach (RouteFamilyDefinition family in Families)
+        {
+            foreach (RouteDefinition route in family.Routes)
+            {
+                yield return route;
+            }
+        }
+
+        if (GlobalFallbackEnabled)
+        {
+            yield return GlobalFallback;
+        }
+    }
 
     public PipelineConfiguration Clone(bool resetRuntimeState = true) =>
         new()
@@ -30,13 +52,47 @@ public sealed class PipelineConfiguration
             ScenarioId = ScenarioId,
             ScenarioName = ScenarioName,
             SelectionPolicy = SelectionPolicy,
-            ResiliencePolicy = ResiliencePolicy,
             ScoreThreshold = ScoreThreshold,
             TopK = TopK,
             ScoreAggregation = ScoreAggregation,
+            GlobalFallbackEnabled = GlobalFallbackEnabled,
+            GlobalFallback = GlobalFallback.Clone(resetRuntimeState),
+            Streaming = Streaming,
+            Families = Families.Select(family => family.Clone(resetRuntimeState)).ToList(),
+        };
+}
+
+public sealed class RouteFamilyDefinition
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
+
+    public string Name { get; set; } = "route-family";
+
+    public string Purpose { get; set; } = "General";
+
+    public string ProfileExamples { get; set; } = "general questions, everyday help";
+
+    public bool IsDefault { get; set; }
+
+    public string ResiliencePolicy { get; set; } = "None";
+
+    public int MaximumAttempts { get; set; } = 1;
+
+    public int CooldownSeconds { get; set; } = 30;
+
+    public List<RouteDefinition> Routes { get; set; } = [];
+
+    public RouteFamilyDefinition Clone(bool resetRuntimeState = true) =>
+        new()
+        {
+            Id = Id,
+            Name = Name,
+            Purpose = Purpose,
+            ProfileExamples = ProfileExamples,
+            IsDefault = IsDefault,
+            ResiliencePolicy = ResiliencePolicy,
             MaximumAttempts = MaximumAttempts,
             CooldownSeconds = CooldownSeconds,
-            Streaming = Streaming,
             Routes = Routes.Select(route => route.Clone(resetRuntimeState)).ToList(),
         };
 }
@@ -45,7 +101,7 @@ public sealed class RouteDefinition
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
 
-    public string Name { get; set; } = "route";
+    public string Name { get; set; } = "model";
 
     public string Purpose { get; set; } = "General";
 
@@ -58,10 +114,6 @@ public sealed class RouteDefinition
     public int MaxOutputTokens { get; set; } = 1200;
 
     public string Instructions { get; set; } = "Be concise and helpful.";
-
-    public string ProfileExamples { get; set; } = "general questions, everyday help";
-
-    public bool IsDefault { get; set; }
 
     public bool FailNext { get; set; }
 
@@ -88,8 +140,6 @@ public sealed class RouteDefinition
             Temperature = Temperature,
             MaxOutputTokens = MaxOutputTokens,
             Instructions = Instructions,
-            ProfileExamples = ProfileExamples,
-            IsDefault = IsDefault,
             FailNext = resetRuntimeState ? false : FailNext,
             DownUntil = resetRuntimeState ? null : DownUntil,
             DownUntilRevived = !resetRuntimeState && DownUntilRevived,
@@ -106,7 +156,7 @@ public sealed record ScenarioDefinition(
     string Name,
     string Description,
     string SelectionPolicy,
-    string ResiliencePolicy);
+    string Composition);
 
 public sealed class ChatEntry
 {
@@ -122,13 +172,14 @@ public sealed class ChatEntry
 }
 
 public sealed record RoutingScore(
-    string RouteId,
-    string RouteName,
+    string RouteFamilyId,
+    string RouteFamilyName,
     double Score,
     string MatchedTerms);
 
 public sealed record AttemptRecord(
     int Number,
+    string Layer,
     string RouteName,
     string ModelId,
     int DurationMs,
@@ -157,7 +208,11 @@ public sealed class RequestDebugState
 
     public string ResiliencePolicy { get; set; } = string.Empty;
 
+    public string SelectedFamilyId { get; set; } = string.Empty;
+
     public string SelectedRoute { get; set; } = "Pending";
+
+    public string FinalRouteId { get; set; } = string.Empty;
 
     public string FinalRoute { get; set; } = "Pending";
 

@@ -87,6 +87,9 @@ verified outside the main interaction.
 | Capability | Demo treatment | Evidence | Priority |
 | --- | --- | --- | --- |
 | Router is itself an `IChatClient` | Put semantic router inside ordered failover | Nested pipeline graph | P0 |
+| Semantic profile targets a router | Map coding and creative profiles to independent ordered or cooldown family clients | Interactive composition tree | P0 |
+| Per-family resilience | Configure single, ordered, or cooldown behavior independently for each semantic family | Family-node inspector | P0 |
+| Inner versus outer failure scope | Exhaust a selected family, then invoke a global emergency client outside the semantic router | Nested attempt and event timelines | P0 |
 | Route-level configured wrappers | Different instructions/options per route | Options diff | P0 |
 | One model at multiple reasoning levels | Low/high wrappers over one OpenAI client | Distinct routes and effective options | P0 |
 | Sticky application-session routing | Pin only after successful completion | Cache/pin events | P1 |
