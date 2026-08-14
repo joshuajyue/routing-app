@@ -8,14 +8,6 @@ namespace RoutingDemo.Web.Components.Pages;
 
 public partial class Home
 {
-    private static readonly (string Title, string Subtitle)[] BuilderSteps =
-    [
-        ("Scenario", "Choose a starting tree"),
-        ("Outer shape", "Set selection and escape hatch"),
-        ("Compose", "Edit the interactive tree"),
-        ("Review", "Build the pipeline"),
-    ];
-
     private static readonly ScenarioDefinition[] Scenarios =
     [
         new(
@@ -46,13 +38,6 @@ public partial class Home
             "A callback chooses a routine or deep route family built from configured wrappers over the same model.",
             "Callback",
             "Configured clients"),
-    ];
-
-    private static readonly (string Value, string Label, string Description)[] SelectionOptions =
-    [
-        ("Semantic", "Semantic routing", "Select a route family from example utterances."),
-        ("Callback", "Callback routing", "Select a family from request shape and complexity."),
-        ("None", "Direct", "Always select the first configured route family."),
     ];
 
     private static readonly (string Value, string Label, string Description)[] ResilienceOptions =
@@ -98,8 +83,6 @@ public partial class Home
 
     private RequestDebugState? CurrentDebug { get; set; }
 
-    private int CurrentStep { get; set; }
-
     private bool IsBuilt { get; set; }
 
     private bool IsSending { get; set; }
@@ -117,14 +100,6 @@ public partial class Home
     private RouteFamilyDefinition? SelectedRouteFamily => ResolveSelectedRouteFamily();
 
     private RouteDefinition? SelectedRoute => ResolveSelectedRoute();
-
-    private bool CanAdvance => CurrentStep switch
-    {
-        0 => Scenarios.Any(scenario => scenario.Id == Draft.ScenarioId),
-        1 => !string.IsNullOrWhiteSpace(Draft.SelectionPolicy),
-        2 => HasValidTree(),
-        _ => CanBuild,
-    };
 
     private bool CanBuild =>
         HasValidTree() &&
@@ -156,7 +131,7 @@ public partial class Home
             return;
         }
 
-        CurrentStep = 0;
+        SelectedNodeKey = "selector";
     }
 
     private void SelectScenario(string scenarioId)
@@ -182,47 +157,6 @@ public partial class Home
 
     private void OnSelectionChanged(ChangeEventArgs eventArgs) =>
         SetSelectionPolicy(eventArgs.Value?.ToString() ?? "Semantic");
-
-    private void SetGlobalFallback(bool enabled)
-    {
-        Draft.GlobalFallbackEnabled = enabled;
-        if (enabled)
-        {
-            SelectedNodeKey = $"global:{Draft.GlobalFallback.Id}";
-        }
-        else if (SelectedNodeKey.StartsWith("global:", StringComparison.Ordinal))
-        {
-            SelectedNodeKey = "selector";
-        }
-    }
-
-    private void GoToStep(int step)
-    {
-        if (step >= 0 && step <= CurrentStep)
-        {
-            CurrentStep = step;
-        }
-    }
-
-    private void PreviousStep()
-    {
-        if (CurrentStep > 0)
-        {
-            CurrentStep--;
-        }
-    }
-
-    private void NextStep()
-    {
-        if (CanAdvance && CurrentStep < BuilderSteps.Length - 1)
-        {
-            CurrentStep++;
-            if (CurrentStep == 2)
-            {
-                SelectedNodeKey = "selector";
-            }
-        }
-    }
 
     private void AddFamily()
     {
@@ -517,7 +451,6 @@ public partial class Home
         }
 
         IsBuilt = false;
-        CurrentStep = 2;
         SelectedNodeKey = "selector";
         IsSending = false;
     }

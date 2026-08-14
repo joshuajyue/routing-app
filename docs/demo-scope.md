@@ -87,24 +87,17 @@ successful five-minute walkthrough should answer:
 
 ## Proposed experience
 
-### 1. Guided build step
+### 1. Live composition workspace
 
-The landing page is a short guided flow, not a persistent visual builder. It
-should feel like interactively constructing the pipeline before the chat demo
-begins.
+The landing page is one persistent visual builder rather than a linear wizard.
+The client tree is always visible while the user:
 
-Recommended steps:
-
-1. **Choose a starting scenario.** Start from scratch or prefill the form with
-   a scenario.
-2. **Choose the outer shape.** Select the top-level routing policy and whether
-   an exhausted route family should fall back to a global emergency client.
-3. **Compose the interactive tree.** Add semantic route families, choose a
-   single, ordered, or cooldown target for each family, and configure its model
-   leaves.
-4. **Review and build.** Show the pipeline tree, key option values, warnings,
-   and an optional equivalent C# preview, then create the pipeline and enter
-   chat.
+1. Chooses a starting preset.
+2. Selects the selector, route-family, resilience, model, or outer-fallback
+   node to open its contextual settings.
+3. Watches every option immediately mutate the same tree.
+4. Reviews readiness notes or the equivalent C# shape and starts chat from the
+   same screen.
 
 Starting scenarios are accelerators inside the first step:
 
@@ -120,21 +113,18 @@ Starting scenarios are accelerators inside the first step:
 | Sticky conversation | Classify once, pin only after a completed response, and reuse the route |
 | Adaptive health | Rank routes using observed latency after cooldown behavior is understood |
 
-Each scenario only prefills the guided form. The user can change every value
-before selecting **Build and start chat**.
+Each scenario replaces the current tree with an editable starting shape. There
+is no separate policy, routes, or review page.
 
 The first version uses a constrained interactive tree rather than a free-form
 graph editor. A user selects a selector, route-family, resilience, model, or
 outer-fallback node and edits only that node's valid settings.
 
-The final review contains:
+The persistent builder footer contains:
 
-- A visual pipeline tree showing router composition.
-- A concise summary of selection, resilience, routes, and model options.
 - Validation warnings for unsupported model/option combinations.
-- Initial availability and cooldown settings.
 - Optional equivalent C# code for the configured API composition.
-- **Back** and **Build and start chat** actions.
+- Build readiness, family/client counts, and **Build and start chat**.
 
 Import/export can be added after the core build-to-chat flow is complete.
 
@@ -564,7 +554,7 @@ This is a proposed structure, not approval to scaffold it yet.
 
 - Agree on the P0 decisions.
 - Lock the capability matrix and acceptance criteria.
-- Produce low-fidelity wireframes for the guided build flow and chat workspace.
+- Produce low-fidelity wireframes for the live composition and chat workspaces.
 
 ### Phase 1: built-in routing playground
 
@@ -612,7 +602,7 @@ This is a proposed structure, not approval to scaffold it yet.
 - A composed semantic-plus-failover pipeline is editable and understandable
   from the build review and read-only chat summary.
 - Request-level and route-level options are displayed as separate layers.
-- Structural configuration happens in the guided build step, while the chat
+- Structural configuration happens in the live composition workspace, while the chat
   screen stays focused on conversation, route status, failure controls, and
   debug evidence.
 - Unsupported patterns are labeled rather than approximated.

@@ -3,9 +3,9 @@
 > Status: functional UI prototype with simulated routing behavior.
 
 A minimalist Blazor UI for exploring the extensible routing and failover APIs
-in `Microsoft.Extensions.AI`. The experience starts with a guided build step
-for selecting policies, routes, models, and options, then segues into an
-interactive chat with live routing diagnostics.
+in `Microsoft.Extensions.AI`. The experience starts with one live composition
+workspace: presets and node settings mutate an always-visible client tree,
+which then segues into an interactive chat with routing diagnostics.
 
 The central product decision is that semantic routing and failover are not
 exclusive modes:
@@ -29,9 +29,10 @@ OrderedFailoverChatClient
 `-- global-emergency
 ```
 
-Selecting any tree node opens its contextual settings. Structural
-configuration is reviewed once and built into a pipeline; the chat screen keeps
-runtime health controls, conversation, and debug information visible.
+Selecting any tree node opens its contextual settings, and every change is
+immediately reflected in the tree. Build readiness, review notes, and the C#
+shape stay in the same workspace; the chat screen keeps runtime health
+controls, conversation, and debug information visible.
 
 ## Run
 
@@ -43,7 +44,8 @@ The current prototype is deterministic and does not require an API key.
 
 ## Included
 
-- Guided scenario, outer-shape, interactive composition, and review steps.
+- Live preset selection, interactive composition, readiness, and build controls
+  on one screen.
 - Semantic profiles that target single clients or independent ordered/cooldown
   failover chains.
 - Optional whole-pipeline emergency fallback.

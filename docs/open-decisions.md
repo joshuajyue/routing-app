@@ -7,7 +7,7 @@ simulated clients. Remaining decisions apply to wiring the real routing APIs.
 
 | Decision | Recommended default | Reason |
 | --- | --- | --- |
-| UX model | A guided build step with an interactive client tree, followed by a focused chat/debug screen | Makes nested `IChatClient` composition explicit without becoming a free-form workflow editor |
+| UX model | One live composition workspace with an always-visible client tree, followed by a focused chat/debug screen | Removes wizard overhead while keeping nested `IChatClient` composition explicit |
 | Initial host | .NET 10 Blazor Web App with Interactive Server rendering | Keeps `IChatClient`, streaming, and credentials server-side in a mostly C# sample |
 | Default execution | Deterministic simulated models and embeddings | Makes the demo reliable, free to run, and able to reproduce exact failure boundaries |
 | Live provider scope | OpenAI only, with a curated model catalog plus custom ID | Matches the initial concept without pretending model discovery or capability metadata is universal |
@@ -71,7 +71,7 @@ Scope is ready for implementation when:
 
 - The P0 rows above are accepted or replaced.
 - The P0 capability matrix is considered complete.
-- The guided build flow and chat/debug workspace have low-fidelity wireframes.
+- The live composition and chat/debug workspaces have low-fidelity wireframes.
 - The OpenAI model/capability source is chosen.
 - The distinction between built-in telemetry and demo-derived telemetry is
   approved.
