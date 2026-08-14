@@ -12,9 +12,9 @@ Build a browser-based, inspectable chat playground that teaches how
 
 The demo should make an otherwise invisible routing decision observable:
 
-1. Configure named routes and their models.
-2. Choose or compose a selection and resilience policy.
-3. Send a request or trigger a deterministic failure.
+1. Complete a guided build step for policies, routes, models, and options.
+2. Review and create the configured routing pipeline.
+3. Chat through that pipeline or trigger a deterministic failure.
 4. See the selected route, actual model, option layers, semantic evidence, and
    every failover attempt.
 
@@ -62,6 +62,15 @@ OrderedFailoverChatClient
 `-- emergency -> fallback model
 ```
 
+This is presented as a linear two-phase experience:
+
+1. **Build:** configure and create a fresh pipeline.
+2. **Chat:** use that pipeline and inspect its behavior.
+
+Structural changes require returning to the build step and creating a new
+pipeline. Runtime controls such as kill, timed kill, revive, cancel, and clear
+diagnostics remain available during chat.
+
 ## Audience and demo story
 
 The primary audience is a .NET developer evaluating the routing APIs. A
@@ -78,10 +87,27 @@ successful five-minute walkthrough should answer:
 
 ## Proposed experience
 
-### 1. Preset gallery
+### 1. Guided build step
 
-The landing page starts with editable scenario cards rather than an empty
-builder:
+The landing page is a short guided flow, not a persistent visual builder. It
+should feel like interactively constructing the pipeline before the chat demo
+begins.
+
+Recommended steps:
+
+1. **Choose a starting scenario.** Start from scratch or prefill the form with
+   a scenario.
+2. **Choose policies.** Select the routing/selection policy and optional
+   resilience policy.
+3. **Configure routes.** Add named routes, choose models and options, edit
+   semantic profiles, and order failover candidates.
+4. **Configure behavior.** Set semantic scoring, maximum attempts, cooldown
+   behavior, and initial simulated availability.
+5. **Review and build.** Show the pipeline tree, key option values, warnings,
+   and an optional equivalent C# preview, then create the pipeline and enter
+   chat.
+
+Starting scenarios are accelerators inside the first step:
 
 | Preset | Purpose |
 | --- | --- |
@@ -94,26 +120,25 @@ builder:
 | Sticky conversation | Classify once, pin only after a completed response, and reuse the route |
 | Adaptive health | Rank routes using observed latency after cooldown behavior is understood |
 
-Each preset opens the same workspace and can be modified.
+Each scenario only prefills the guided form. The user can change every value
+before selecting **Build and start chat**.
 
-### 2. Pipeline configurator
+The first version should use structured steps and route cards, not a free-form
+graph editor. Reordering routes and choosing a router as a failover entry is
+enough to prove composition.
 
-The configuration pane contains:
+The final review contains:
 
 - A visual pipeline tree showing router composition.
-- A selection-policy editor.
-- A resilience-policy editor.
-- An ordered list of named routes.
-- Global request defaults and per-route overrides.
-- Semantic profile utterances and scoring controls.
-- Availability, cooldown, and fault-injection controls.
-- Import/export of the current configuration as JSON.
+- A concise summary of selection, resilience, routes, and model options.
+- Validation warnings for unsupported model/option combinations.
+- Initial availability and cooldown settings.
+- Optional equivalent C# code for the configured API composition.
+- **Back** and **Build and start chat** actions.
 
-The first version should use structured forms, not a free-form graph editor.
-Reordering routes and choosing a router as a failover entry is enough to prove
-composition without introducing diagram-editor complexity.
+Import/export can be added after the core build-to-chat flow is complete.
 
-### 3. Route editor
+### 2. Route configuration during build
 
 Each route has:
 
@@ -134,20 +159,35 @@ Distinct option configurations should be represented by distinct configured
 hide the API's client-instance routing identity and would not demonstrate the
 recommended route-level option pattern.
 
-### 4. Chat workspace
+### 3. Chat demo
 
 The main workspace uses a split layout:
 
 - Left: conversation, streaming output, send/cancel controls, and a
   streaming/non-streaming toggle.
 - Right: live debug inspector for the selected request.
-- Top or side: collapsible pipeline configuration.
+- Top or side: compact, read-only pipeline summary and route health controls.
 
 The user can switch between a deterministic simulated provider and live OpenAI.
 Simulated mode should be the default so the demo works without credentials and
 failure timelines remain reproducible.
 
-### 5. Debug inspector
+Structural policy, model, route-order, and option changes are not edited in the
+chat workspace. A **Rebuild pipeline** action returns to the guided build step,
+prefilled with the current configuration, and starts a new demo session after
+the next build.
+
+Live chat controls remain available without rebuilding:
+
+- Fail next invocation.
+- Kill for a selected duration.
+- Kill until revived.
+- Revive.
+- Cancel current request.
+- Clear transcript or debug events.
+- Clear a sticky route pin.
+
+### 4. Debug inspector
 
 The inspector has four views.
 
@@ -197,6 +237,9 @@ For each failover attempt, display:
 The UI must distinguish configured model from actual provider-reported model.
 It must also avoid implying that intended `ChatOptions` are the provider's raw
 wire payload.
+
+The inspector and route-status controls are the primary secondary experience
+during chat. The full build form should not compete with the transcript.
 
 ## Required scenarios
 
@@ -401,7 +444,8 @@ The debug UI must keep these concepts separate:
 
 The route list should show both states and a countdown for every timed state.
 Controls should include **Fail next**, **Kill for...**, **Kill until revived**,
-and **Revive**.
+and **Revive**. These controls live on the chat screen because they change
+runtime state rather than pipeline structure.
 
 Recommended initial cooldown behavior:
 
@@ -504,7 +548,7 @@ This is a proposed structure, not approval to scaffold it yet.
 
 - Agree on the P0 decisions.
 - Lock the capability matrix and acceptance criteria.
-- Produce low-fidelity wireframes for the preset gallery and workspace.
+- Produce low-fidelity wireframes for the guided build flow and chat workspace.
 
 ### Phase 1: built-in routing playground
 
@@ -550,8 +594,11 @@ This is a proposed structure, not approval to scaffold it yet.
 - Semantic threshold, top-K, aggregation, default selection, and index caching
   are visible.
 - A composed semantic-plus-failover pipeline is editable and understandable
-  from the route graph.
+  from the build review and read-only chat summary.
 - Request-level and route-level options are displayed as separate layers.
+- Structural configuration happens in the guided build step, while the chat
+  screen stays focused on conversation, route status, failure controls, and
+  debug evidence.
 - Unsupported patterns are labeled rather than approximated.
 
 ## Non-goals
@@ -564,5 +611,6 @@ This is a proposed structure, not approval to scaffold it yet.
 - Ensemble fan-out and response voting.
 - Hedged/racing requests.
 - A general-purpose visual workflow editor.
+- Editing structural pipeline configuration inline while chatting.
 - Persisting prompts, responses, or API keys.
 - Hiding experimental API status or compatibility limitations.

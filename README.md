@@ -3,10 +3,10 @@
 > Status: scope and design only. This repository intentionally contains no application scaffold yet.
 
 An interactive .NET demo for the extensible routing and failover APIs in
-`Microsoft.Extensions.AI` 10.9.0. The target experience lets a user compose a
-routing pipeline, configure OpenAI-backed routes, inject failures, chat through
-the pipeline, and inspect why each request selected or failed over to a model.
-Routes can be taken down for one request, for a timed window, or until manually
+`Microsoft.Extensions.AI` 10.9.0. The experience starts with a guided,
+interactive build step for selecting policies, routes, models, and options.
+That build then segues into a chat demo with live routing diagnostics. Routes
+can be taken down for one request, for a timed window, or until manually
 revived so static ordered failover can be compared with a stateful custom
 cooldown policy.
 
@@ -17,9 +17,11 @@ exclusive modes:
 - A resilience policy decides what to try next if that invocation fails.
 - Because every router is an `IChatClient`, those policies can be composed.
 
-The proposed UI therefore separates **selection**, **resilience**, and
-**per-route model configuration** rather than offering only a semantic-versus-
-ordered-failover switch.
+The build step separates **selection**, **resilience**, and **per-route model
+configuration** rather than offering only a semantic-versus-ordered-failover
+switch. Structural configuration is reviewed once and built into a pipeline;
+the chat screen keeps only live status, failure controls, and debug information
+visible.
 
 ## Scope documents
 
