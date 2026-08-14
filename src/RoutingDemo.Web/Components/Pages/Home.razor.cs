@@ -95,11 +95,22 @@ public partial class Home
 
     private string SelectedNodeKey { get; set; } = "selector";
 
+    private string ActiveSelectedNodeKey { get; set; } = string.Empty;
+
+    private bool PipelineSidebarVisible { get; set; } = true;
+
+    private bool DebugSidebarVisible { get; set; } = true;
+
     private RouteFamilyDefinition? SelectedFamily => ResolveSelectedFamily();
 
     private RouteFamilyDefinition? SelectedRouteFamily => ResolveSelectedRouteFamily();
 
     private RouteDefinition? SelectedRoute => ResolveSelectedRoute();
+
+    private RouteLocation? ActiveSelectedRouteLocation =>
+        ActiveConfiguration is null
+            ? null
+            : ResolveRouteLocation(ActiveConfiguration, ActiveSelectedNodeKey);
 
     private bool CanBuild =>
         HasValidTree() &&
@@ -433,6 +444,9 @@ public partial class Home
         CurrentDebug = null;
         Prompt = string.Empty;
         DebugTab = "Summary";
+        ActiveSelectedNodeKey = GetInitialActiveNodeKey(ActiveConfiguration);
+        PipelineSidebarVisible = true;
+        DebugSidebarVisible = true;
         IsBuilt = true;
     }
 
@@ -446,8 +460,13 @@ public partial class Home
 
         IsBuilt = false;
         SelectedNodeKey = "selector";
+        ActiveSelectedNodeKey = string.Empty;
         IsSending = false;
     }
+
+    private void TogglePipelineSidebar() => PipelineSidebarVisible = !PipelineSidebarVisible;
+
+    private void ToggleDebugSidebar() => DebugSidebarVisible = !DebugSidebarVisible;
 
     private void UsePrompt(string prompt) => Prompt = prompt;
 
@@ -1032,6 +1051,36 @@ public partial class Home
         return "Healthy";
     }
 
+    private static string GetAvailabilityLabel(RouteDefinition route)
+    {
+        if (route.DownUntilRevived)
+        {
+            return "Down until revived";
+        }
+
+        if (route.DownUntil is { } downUntil && downUntil > DateTimeOffset.Now)
+        {
+            return $"Down {SecondsRemaining(downUntil)}s";
+        }
+
+        return route.FailNext ? "Fails next" : "Up";
+    }
+
+    private static string GetPolicyHealthLabel(RouteDefinition route)
+    {
+        if (route.PolicyDisabled)
+        {
+            return "Disabled";
+        }
+
+        if (route.CooldownUntil is { } cooldownUntil && cooldownUntil > DateTimeOffset.Now)
+        {
+            return $"Cooling {SecondsRemaining(cooldownUntil)}s";
+        }
+
+        return "Eligible";
+    }
+
     private string GetRouteStatusClass(RouteDefinition route)
     {
         if (IsRouteUnavailable(route) || route.PolicyDisabled)
@@ -1259,25 +1308,41 @@ public partial class Home
     private static string GetResilienceDisplayName(string policy) =>
         policy == "None" ? "Single" : policy;
 
-    private static List<RouteLocation> GetRouteLocations(PipelineConfiguration configuration)
+    private static string GetInitialActiveNodeKey(PipelineConfiguration configuration)
     {
-        var locations = new List<RouteLocation>();
-        foreach (RouteFamilyDefinition family in configuration.Families)
-        {
-            locations.AddRange(family.Routes.Select(route =>
-                new RouteLocation(family.Id, family.Name, route, IsGlobalFallback: false)));
-        }
+        RouteFamilyDefinition family = configuration.Families[0];
+        return $"route:{family.Id}:{family.Routes[0].Id}";
+    }
 
-        if (configuration.GlobalFallbackEnabled)
+    private static RouteLocation? ResolveRouteLocation(
+        PipelineConfiguration configuration,
+        string nodeKey)
+    {
+        string[] parts = nodeKey.Split(':');
+        if (parts.Length >= 2 && parts[0] == "global" &&
+            configuration.GlobalFallbackEnabled &&
+            configuration.GlobalFallback.Id == parts[1])
         {
-            locations.Add(new RouteLocation(
+            return new RouteLocation(
                 string.Empty,
                 "Outer fallback",
                 configuration.GlobalFallback,
-                IsGlobalFallback: true));
+                IsGlobalFallback: true);
         }
 
-        return locations;
+        if (parts.Length >= 3 && parts[0] == "route")
+        {
+            RouteFamilyDefinition? family =
+                configuration.Families.FirstOrDefault(candidate => candidate.Id == parts[1]);
+            RouteDefinition? route =
+                family?.Routes.FirstOrDefault(candidate => candidate.Id == parts[2]);
+            if (family is not null && route is not null)
+            {
+                return new RouteLocation(family.Id, family.Name, route, IsGlobalFallback: false);
+            }
+        }
+
+        return null;
     }
 
     private static RouteDefinition? FindRouteById(

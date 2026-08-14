@@ -59,6 +59,8 @@ The current prototype is deterministic and does not require an API key.
   controls.
 - Simulated streaming and non-streaming chat.
 - Fail-next, timed kill, kill-until-revived, and revive controls.
+- Interactive runtime tree with health controls for the selected model client.
+- Independently collapsible pipeline and debug sidebars.
 - Semantic score evidence, event timeline, effective options, and
   nested `FailoverChatClientAttempt`-shaped diagnostics.
 - Responsive, sans-serif visual system with no external UI dependency.

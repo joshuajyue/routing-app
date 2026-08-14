@@ -162,24 +162,29 @@ recommended route-level option pattern.
 
 ### 3. Chat demo
 
-The main workspace uses a split layout:
+The main workspace uses a three-panel layout:
 
-- Left: conversation, streaming output, send/cancel controls, and a
-  streaming/non-streaming toggle.
+- Left, approximately one quarter of the viewport: an interactive runtime tree.
+  Selecting a model leaf opens that model's availability and policy-health
+  controls directly below the tree.
+- Center: conversation, streaming output, and send/cancel controls.
 - Right: live debug inspector for the selected request.
-- Top or side: compact, read-only pipeline summary and route health controls.
+
+The pipeline and debug sidebars can be hidden independently so the conversation
+can use the reclaimed space.
 
 The user can switch between a deterministic simulated provider and live OpenAI.
 Simulated mode should be the default so the demo works without credentials and
 failure timelines remain reproducible.
 
 Structural policy, model, route-order, and option changes are not edited in the
-chat workspace. A **Rebuild pipeline** action returns to the guided build step,
-prefilled with the current configuration, and starts a new demo session after
-the next build.
+chat workspace. Tree interaction selects runtime clients for inspection and
+fault injection only. A **Rebuild pipeline** action returns to the live
+composition workspace, prefilled with the current configuration.
 
 Live chat controls remain available without rebuilding:
 
+- Select a model client from the runtime tree.
 - Fail next invocation.
 - Kill for a selected duration.
 - Kill until revived.
@@ -601,8 +606,8 @@ This is a proposed structure, not approval to scaffold it yet.
   cooldown policy's cross-request health memory.
 - Semantic threshold, top-K, aggregation, default selection, and index caching
   are visible.
-- A composed semantic-plus-failover pipeline is editable and understandable
-  from the build review and read-only chat summary.
+- A composed semantic-plus-failover pipeline remains understandable from the
+  interactive runtime tree.
 - Request-level and route-level options are displayed as separate layers.
 - Structural configuration happens in the live composition workspace, while the chat
   screen stays focused on conversation, route status, failure controls, and

@@ -409,63 +409,79 @@
     }
     else
     {
-        <main class="workspace">
-            <aside class="pipeline-sidebar">
-                <section class="sidebar-section">
-                    <div class="sidebar-heading">
-                        <span class="eyebrow">Active pipeline</span>
-                        <span class="session-id">@SessionId</span>
-                    </div>
-                    <div class="compact-pipeline">
-                        <PipelineTree Configuration="ActiveConfiguration!" Compact="true" />
-                    </div>
-                </section>
+        <main class="workspace @(!PipelineSidebarVisible ? "pipeline-hidden" : null) @(!DebugSidebarVisible ? "debug-hidden" : null)">
+            @if (PipelineSidebarVisible)
+            {
+                <aside class="pipeline-sidebar">
+                    <section class="sidebar-section pipeline-tree-section">
+                        <div class="sidebar-heading">
+                            <span class="eyebrow">Active pipeline</span>
+                            <div class="sidebar-heading-actions">
+                                <span class="session-id">@SessionId</span>
+                                <button class="sidebar-hide-button" type="button" @onclick="TogglePipelineSidebar">
+                                    Hide
+                                </button>
+                            </div>
+                        </div>
+                        <div class="active-pipeline-tree">
+                            <PipelineTree Configuration="ActiveConfiguration!"
+                                          Interactive="true"
+                                          @bind-SelectedNodeKey="ActiveSelectedNodeKey" />
+                        </div>
+                    </section>
 
-                <section class="sidebar-section models-section">
-                    <div class="sidebar-heading">
-                        <span class="eyebrow">Model health</span>
-                        <span class="model-count">@ActiveConfiguration!.AllRoutes().Count() clients</span>
-                    </div>
+                    <section class="sidebar-section selected-health-section">
+                        <div class="sidebar-heading">
+                            <span class="eyebrow">Model health</span>
+                        </div>
 
-                    <div class="health-list">
-                        @foreach (RouteLocation location in GetRouteLocations(ActiveConfiguration))
+                        @if (ActiveSelectedRouteLocation is { } selectedLocation)
                         {
-                            RouteDefinition route = location.Route;
-                            <article class="health-card @GetRouteStatusClass(route)" @key="route.Id">
-                                <div class="health-card-main">
+                            RouteDefinition selectedRoute = selectedLocation.Route;
+                            <article class="selected-health-card @GetRouteStatusClass(selectedRoute)">
+                                <header>
                                     <span class="health-indicator"></span>
                                     <div>
-                                        <strong>@route.Name</strong>
-                                        <small>@location.FamilyName / @route.ModelId</small>
+                                        <strong>@selectedRoute.Name</strong>
+                                        <small>@selectedLocation.FamilyName / @selectedRoute.ModelId</small>
                                     </div>
-                                    <span class="health-label">@GetRouteStatusLabel(route)</span>
-                                </div>
+                                    <span class="health-label">@GetRouteStatusLabel(selectedRoute)</span>
+                                </header>
 
-                                <div class="health-actions">
-                                    @if (IsRouteUnavailable(route) || IsRouteCoolingDown(route))
+                                <dl>
+                                    <div>
+                                        <dt>Availability</dt>
+                                        <dd>@GetAvailabilityLabel(selectedRoute)</dd>
+                                    </div>
+                                    <div>
+                                        <dt>Policy health</dt>
+                                        <dd>@GetPolicyHealthLabel(selectedRoute)</dd>
+                                    </div>
+                                </dl>
+
+                                <div class="selected-health-actions">
+                                    @if (IsRouteUnavailable(selectedRoute) || IsRouteCoolingDown(selectedRoute))
                                     {
-                                        <button type="button" @onclick="() => ReviveRoute(route)">Revive</button>
+                                        <button type="button" @onclick="() => ReviveRoute(selectedRoute)">Revive</button>
                                     }
                                     else
                                     {
-                                        <button type="button" @onclick="() => FailNext(route)">Fail next</button>
-                                        <button type="button" @onclick="() => KillFor(route, 30)">Kill 30s</button>
-                                        <button type="button" @onclick="() => KillUntilRevived(route)">Kill until revive</button>
+                                        <button type="button" @onclick="() => FailNext(selectedRoute)">Fail next</button>
+                                        <button type="button" @onclick="() => KillFor(selectedRoute, 30)">Kill 30s</button>
+                                        <button type="button" @onclick="() => KillUntilRevived(selectedRoute)">Kill until revive</button>
                                     }
                                 </div>
                             </article>
                         }
-                    </div>
-                </section>
-
-                <section class="sidebar-note">
-                    <span class="note-icon">i</span>
-                    <p>
-                        A semantic profile selects a stable family client. Ordered or cooldown
-                        behavior then runs inside that family.
-                    </p>
-                </section>
-            </aside>
+                        else
+                        {
+                            <div class="selected-health-empty">
+                                Select a model client in the tree.
+                            </div>
+                        }
+                    </section>
+                </aside>
+            }
 
             <section class="chat-panel">
                 <header class="chat-header">
@@ -474,6 +490,18 @@
                         <h2>Ask the pipeline</h2>
                     </div>
                     <div class="chat-header-actions">
+                        <div class="workspace-panel-toggles">
+                            <button class="panel-toggle @(PipelineSidebarVisible ? "active" : null)"
+                                    type="button"
+                                    @onclick="TogglePipelineSidebar">
+                                @(PipelineSidebarVisible ? "Hide pipeline" : "Show pipeline")
+                            </button>
+                            <button class="panel-toggle @(DebugSidebarVisible ? "active" : null)"
+                                    type="button"
+                                    @onclick="ToggleDebugSidebar">
+                                @(DebugSidebarVisible ? "Hide debug" : "Show debug")
+                            </button>
+                        </div>
                         @if (Messages.Count > 0 && !IsSending)
                         {
                             <button class="clear-chat-button" type="button" @onclick="ClearTranscript">
@@ -484,7 +512,7 @@
                             <span class="mode-dot"></span>
                             Simulated OpenAI
                             <span>/</span>
-                            @(ActiveConfiguration.Streaming ? "Streaming" : "Non-streaming")
+                            @(ActiveConfiguration!.Streaming ? "Streaming" : "Non-streaming")
                         </div>
                     </div>
                 </header>
@@ -564,16 +592,23 @@
                 </footer>
             </section>
 
-            <aside class="debug-panel">
+            @if (DebugSidebarVisible)
+            {
+                <aside class="debug-panel">
                 <header class="debug-header">
                     <div>
                         <span class="eyebrow">Request inspector</span>
                         <h2>Debug</h2>
                     </div>
-                    @if (CurrentDebug is not null)
-                    {
-                        <span class="request-id">@CurrentDebug.RequestId</span>
-                    }
+                    <div class="debug-header-actions">
+                        @if (CurrentDebug is not null)
+                        {
+                            <span class="request-id">@CurrentDebug.RequestId</span>
+                        }
+                        <button class="sidebar-hide-button" type="button" @onclick="ToggleDebugSidebar">
+                            Hide
+                        </button>
+                    </div>
                 </header>
 
                 <nav class="debug-tabs" aria-label="Debug views">
@@ -757,7 +792,8 @@
                         </section>
                     }
                 </div>
-            </aside>
+                </aside>
+            }
         </main>
     }
 </div>

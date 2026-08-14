@@ -34,7 +34,7 @@
                     disabled="@(!Interactive)"
                     aria-pressed="@(SelectedNodeKey == globalKey)"
                     @onclick="() => SelectNodeAsync(globalKey)">
-                <span class="route-dot emergency"></span>
+                <span class="route-dot emergency @GetRouteStatusClass(Configuration.GlobalFallback)"></span>
                 <span class="node-copy">
                     <strong>@Configuration.GlobalFallback.Name</strong>
                     <small>@Configuration.GlobalFallback.ModelId</small>
@@ -244,7 +244,7 @@
                 "onclick",
                 EventCallback.Factory.Create(this, () => SelectNodeAsync(routeKey)));
             builder.OpenElement(sequence++, "span");
-            builder.AddAttribute(sequence++, "class", "route-dot");
+            builder.AddAttribute(sequence++, "class", $"route-dot {GetRouteStatusClass(route)}");
             builder.CloseElement();
             builder.OpenElement(sequence++, "span");
             builder.AddAttribute(sequence++, "class", "node-copy");
@@ -288,4 +288,22 @@
         string.IsNullOrWhiteSpace(value)
             ? value
             : char.ToUpperInvariant(value[0]) + value[1..];
+
+    private static string GetRouteStatusClass(RouteDefinition route)
+    {
+        DateTimeOffset now = DateTimeOffset.Now;
+        if (route.DownUntilRevived ||
+            route.PolicyDisabled ||
+            route.DownUntil is { } downUntil && downUntil > now)
+        {
+            return "down";
+        }
+
+        if (route.CooldownUntil is { } cooldownUntil && cooldownUntil > now)
+        {
+            return "cooling";
+        }
+
+        return route.FailNext ? "armed" : "healthy";
+    }
 }

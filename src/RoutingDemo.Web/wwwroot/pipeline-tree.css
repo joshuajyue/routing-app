@@ -179,8 +179,30 @@
     box-shadow: 0 0 0 1px var(--warning);
 }
 
+.pipeline-tree .route-dot.down {
+    background: var(--danger);
+    box-shadow: 0 0 0 1px var(--danger);
+}
+
+.pipeline-tree .route-dot.cooling {
+    background: var(--warning);
+    box-shadow: 0 0 0 1px var(--warning);
+}
+
+.pipeline-tree .route-dot.armed {
+    background: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+}
+
 .pipeline-tree .global-fallback {
     border-style: dashed;
+}
+
+.active-pipeline-tree .pipeline-tree .tree-node strong,
+.active-pipeline-tree .pipeline-tree .tree-node small {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
 }
 
 .pipeline-tree.compact .tree-node {

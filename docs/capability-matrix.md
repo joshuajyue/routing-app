@@ -94,9 +94,9 @@ verified outside the main interaction.
 | Route-level configured wrappers | Different instructions/options per route | Options diff | P0 |
 | One model at multiple reasoning levels | Semantic low/medium/high single-client families over one OpenAI model | Distinct routes and effective options | P0 |
 | Sticky application-session routing | Pin only after successful completion | Cache/pin events | P1 |
-| One-shot manual failure | Fail the next invocation, then return the route to healthy | Availability state and invocation trace | P0 |
-| Timed manual kill | Keep a route down with a visible expiry countdown | Availability state and attempt trace | P0 |
-| Until-revived manual kill | Keep a route down for the demo session | Availability state and invocation trace | P0 |
+| One-shot manual failure | Select a model leaf in the runtime tree and fail its next invocation | Selected-model health and invocation trace | P0 |
+| Timed manual kill | Select a model leaf and keep it down with a visible expiry countdown | Tree status, selected-model health, and attempt trace | P0 |
+| Until-revived manual kill | Select a model leaf and keep it down for the demo session | Tree status and selected-model health | P0 |
 | Custom `CooldownFailoverChatClient` | Derive from `FailoverChatClient`, skip cooling or disabled routes, and publish attempts | Pipeline graph and policy events | P0 |
 | Cooldown begins from attempt observation | A pre-output failure changes route state before the next selection | Attempt and health timelines | P0 |
 | Half-open recovery | Re-admit a route after expiry and use the next request as a probe | Health state events | P0 |
