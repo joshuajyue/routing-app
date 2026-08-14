@@ -219,6 +219,11 @@ public partial class Home
 
     private void SetFamilyResilience(RouteFamilyDefinition family, string policy)
     {
+        if (policy == "None" && family.Routes.Count != 1)
+        {
+            return;
+        }
+
         family.ResiliencePolicy = policy;
         family.MaximumAttempts = policy == "None"
             ? 1
@@ -1214,6 +1219,7 @@ public partial class Home
         Draft.Families.All(family =>
             !string.IsNullOrWhiteSpace(family.Name) &&
             family.Routes.Count >= 1 &&
+            (family.ResiliencePolicy != "None" || family.Routes.Count == 1) &&
             family.Routes.All(route =>
                 !string.IsNullOrWhiteSpace(route.Name) &&
                 !string.IsNullOrWhiteSpace(route.ModelId)));
@@ -1226,7 +1232,7 @@ public partial class Home
         {
             if (family.ResiliencePolicy == "None" && family.Routes.Count > 1)
             {
-                warnings.Add($"{family.Name} contains multiple models but has no failover policy; only its first client will be invoked.");
+                warnings.Add($"{family.Name} must remove backup clients or select an ordered/cooldown resilience policy.");
             }
 
             if (family.MaximumAttempts > family.Routes.Count)

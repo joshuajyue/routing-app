@@ -223,14 +223,24 @@
                                             <div class="segmented-control resilience-control">
                                                 @foreach (var option in ResilienceOptions)
                                                 {
+                                                    bool optionDisabled =
+                                                        option.Value == "None" && family.Routes.Count != 1;
                                                     <button type="button"
                                                             class="@(family.ResiliencePolicy == option.Value ? "selected" : null)"
+                                                            disabled="@optionDisabled"
+                                                            title="@(optionDisabled ? "Remove backup clients before selecting Single." : option.Description)"
                                                             @onclick="() => SetFamilyResilience(family, option.Value)">
                                                         @option.Label
                                                     </button>
                                                 }
                                             </div>
                                             <small class="field-help">@GetResilienceDescription(family.ResiliencePolicy)</small>
+                                            @if (family.Routes.Count > 1)
+                                            {
+                                                <small class="field-help constraint-help">
+                                                    Single requires exactly one model client. Remove backups first.
+                                                </small>
+                                            }
                                         </div>
 
                                         @if (family.ResiliencePolicy != "None")

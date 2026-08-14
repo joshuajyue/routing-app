@@ -48,6 +48,8 @@ The current prototype is deterministic and does not require an API key.
   on one screen.
 - Semantic profiles that target single clients or independent ordered/cooldown
   failover chains.
+- Single-client families are constrained to exactly one model; adding another
+  model automatically creates an ordered chain.
 - Optional whole-pipeline emergency fallback.
 - Per-route OpenAI model, reasoning, temperature, instruction, and token
   controls.

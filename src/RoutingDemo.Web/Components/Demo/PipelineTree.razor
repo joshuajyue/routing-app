@@ -168,7 +168,7 @@
             builder.OpenElement(sequence++, "div");
             builder.AddAttribute(sequence++, "class", "tree-branch target-branch");
 
-            if (family.ResiliencePolicy != "None" && family.Routes.Count > 1)
+            if (family.ResiliencePolicy != "None")
             {
                 string policyKey = $"policy:{family.Id}";
                 builder.OpenElement(sequence++, "div");

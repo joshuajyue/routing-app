@@ -133,7 +133,7 @@ Import/export can be added after the core build-to-chat flow is complete.
 Each semantic profile maps to one stable route-family `IChatClient`. That
 family target can be:
 
-- One configured model client.
+- Exactly one configured model client when the family has no resilience policy.
 - An `OrderedFailoverChatClient` containing compatible model clients.
 - A custom `CooldownFailoverChatClient` containing compatible model clients.
 
