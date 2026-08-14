@@ -43,15 +43,13 @@
                     <h1>Build the routing tree.</h1>
                 </div>
                 <p>
-                    Start from a preset or select any node. Every option updates
-                    the same live client tree before you enter chat.
+                    Pick a preset or node. The tree updates live.
                 </p>
             </section>
 
             <section class="preset-strip">
                 <div class="preset-strip-heading">
-                    <span class="eyebrow">Starting shape</span>
-                    <span>Presets replace the current tree and remain fully editable.</span>
+                    <span class="eyebrow">Preset</span>
                 </div>
                 <div class="preset-options">
                     @foreach (ScenarioDefinition scenario in Scenarios)
@@ -63,7 +61,7 @@
                             <span class="preset-monogram">@GetScenarioMonogram(scenario.Id)</span>
                             <span>
                                 <strong>@scenario.Name</strong>
-                                <small>@scenario.SelectionPolicy / @scenario.Composition</small>
+                                <small>@scenario.Composition</small>
                             </span>
                         </button>
                     }
@@ -75,7 +73,6 @@
                             <div>
                                 <span class="eyebrow">Live composition</span>
                                 <h2>@Draft.ScenarioName</h2>
-                                <p>Select a node in the tree to edit only that layer.</p>
                             </div>
                             <div class="tree-step-actions">
                                 <label class="streaming-toggle compact-toggle">
@@ -83,7 +80,6 @@
                                     <span class="toggle-track"><span></span></span>
                                     <span>
                                         <strong>Streaming</strong>
-                                        <small>Expose output commitment</small>
                                     </span>
                                 </label>
                                 <button class="button button-secondary" type="button" @onclick="AddFamily">
@@ -97,12 +93,6 @@
                                 <header class="tree-canvas-header">
                                     <div>
                                         <strong>Pipeline</strong>
-                                        <small>Select a node to edit it</small>
-                                    </div>
-                                    <div class="tree-legend">
-                                        <span><i class="legend-selector"></i>selector</span>
-                                        <span><i class="legend-family"></i>profile</span>
-                                        <span><i class="legend-model"></i>model</span>
                                     </div>
                                 </header>
 
@@ -112,33 +102,17 @@
                                                   @bind-SelectedNodeKey="SelectedNodeKey" />
                                 </div>
 
-                                <footer class="tree-canvas-footer">
-                                    <span>@Draft.Families.Count route families</span>
-                                    <span>@Draft.AllRoutes().Count() model clients</span>
-                                </footer>
                             </section>
 
                             <section class="node-inspector">
                                 <header class="node-inspector-header">
                                     <span class="node-type-label">@GetSelectedNodeType()</span>
                                     <h3>@GetSelectedNodeTitle()</h3>
-                                    <p>@GetSelectedNodeDescription()</p>
                                 </header>
 
                                 @if (SelectedNodeKey is "selector" or "outer")
                                 {
                                     <div class="inspector-fields">
-                                        <div class="inspector-callout">
-                                            <span class="callout-glyph">@(Draft.SelectionPolicy == "Semantic" ? "SR" : Draft.SelectionPolicy == "Callback" ? "CB" : "DR")</span>
-                                            <div>
-                                                <strong>@GetSelectorTypeName(Draft)</strong>
-                                                <p>
-                                                    This node selects a route family. Each family is itself an
-                                                    <code>IChatClient</code>, so its target can be a failover chain.
-                                                </p>
-                                            </div>
-                                        </div>
-
                                         <label>
                                             <span>Selection policy</span>
                                             <select value="@Draft.SelectionPolicy"
@@ -179,7 +153,7 @@
                                             <input type="checkbox" @bind="Draft.GlobalFallbackEnabled" />
                                             <span>
                                                 <strong>Outer emergency fallback</strong>
-                                                <small>Wrap the selector and emergency client in OrderedFailoverChatClient.</small>
+                                                <small>Use when the selected family is exhausted.</small>
                                             </span>
                                         </label>
                                     </div>

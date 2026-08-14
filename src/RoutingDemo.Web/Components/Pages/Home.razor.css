@@ -155,13 +155,13 @@
 
 .live-builder-intro p {
     margin: 0;
-    font-size: 13px;
+    font-size: 15px;
     line-height: 1.65;
 }
 
 .preset-strip {
     display: grid;
-    grid-template-columns: 180px minmax(0, 1fr);
+    grid-template-columns: 92px minmax(0, 1fr);
     align-items: center;
     gap: 18px;
     margin-bottom: 12px;
@@ -194,13 +194,13 @@
 .preset-option {
     display: flex;
     min-width: 0;
-    min-height: 54px;
+    min-height: 62px;
     align-items: center;
     gap: 9px;
     border: 1px solid var(--border);
     border-radius: 10px;
     background: var(--surface);
-    padding: 8px 9px;
+    padding: 10px 11px;
     text-align: left;
     transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
 }
@@ -218,14 +218,14 @@
 
 .preset-monogram {
     display: grid;
-    width: 27px;
-    height: 27px;
+    width: 32px;
+    height: 32px;
     flex: 0 0 auto;
     place-items: center;
     border-radius: 7px;
     background: #eff0f3;
     color: var(--text-muted);
-    font-size: 7px;
+    font-size: 9px;
     font-weight: 760;
 }
 
@@ -248,14 +248,14 @@
 }
 
 .preset-option strong {
-    font-size: 9px;
+    font-size: 12px;
     font-weight: 700;
 }
 
 .preset-option small {
     margin-top: 2px;
     color: var(--text-muted);
-    font-size: 7px;
+    font-size: 9px;
 }
 
 .live-builder-card {
@@ -833,7 +833,7 @@ input[type="range"]::-webkit-slider-thumb {
     gap: 12px;
     border-bottom: 1px solid var(--border);
     background: rgb(255 255 255 / 94%);
-    padding: 13px 15px;
+    padding: 16px 18px;
 }
 
 .tree-canvas-header > div:first-child {
@@ -842,7 +842,7 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 .tree-canvas-header strong {
-    font-size: 10px;
+    font-size: 13px;
     font-weight: 700;
 }
 
@@ -903,12 +903,12 @@ input[type="range"]::-webkit-slider-thumb {
 .node-inspector-header {
     border-bottom: 1px solid var(--border);
     background: var(--surface-subtle);
-    padding: 17px 19px;
+    padding: 20px 22px;
 }
 
 .node-type-label {
     color: var(--accent);
-    font-size: 8px;
+    font-size: 10px;
     font-weight: 760;
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -916,7 +916,7 @@ input[type="range"]::-webkit-slider-thumb {
 
 .node-inspector-header h3 {
     margin: 5px 0 0;
-    font-size: 17px;
+    font-size: 22px;
     font-weight: 680;
     letter-spacing: -0.025em;
 }
@@ -933,7 +933,16 @@ input[type="range"]::-webkit-slider-thumb {
     display: flex;
     flex-direction: column;
     gap: 16px;
-    padding: 19px;
+    padding: 22px;
+}
+
+.node-inspector .field-label {
+    font-size: 11px;
+}
+
+.node-inspector .segmented-control button {
+    min-height: 38px;
+    font-size: 11px;
 }
 
 .inspector-fields > label,
@@ -946,7 +955,7 @@ input[type="range"]::-webkit-slider-thumb {
 .inspector-fields label > span,
 .inspector-grid label > span {
     color: var(--text-muted);
-    font-size: 9px;
+    font-size: 11px;
     font-weight: 650;
 }
 
@@ -959,15 +968,15 @@ input[type="range"]::-webkit-slider-thumb {
 
 .inspector-fields input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
 .inspector-fields select {
-    height: 39px;
+    height: 43px;
     padding: 0 10px;
-    font-size: 11px;
+    font-size: 13px;
 }
 
 .inspector-fields textarea {
     min-height: 78px;
     padding: 10px;
-    font-size: 11px;
+    font-size: 13px;
     line-height: 1.5;
 }
 
@@ -1021,13 +1030,13 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 .inspector-callout strong {
-    font-size: 10px;
+    font-size: 12px;
 }
 
 .inspector-callout p {
     margin: 3px 0 0;
     color: var(--text-muted);
-    font-size: 8px;
+    font-size: 10px;
     line-height: 1.55;
 }
 
@@ -1062,13 +1071,13 @@ input[type="range"]::-webkit-slider-thumb {
 
 .check-field strong {
     color: var(--text);
-    font-size: 10px;
+    font-size: 12px;
 }
 
 .check-field small {
     margin-top: 2px;
     color: var(--text-muted);
-    font-size: 8px;
+    font-size: 10px;
     font-weight: 500;
 }
 
@@ -1079,7 +1088,7 @@ input[type="range"]::-webkit-slider-thumb {
 
 .field-help {
     color: var(--text-muted);
-    font-size: 8px;
+    font-size: 10px;
     line-height: 1.5;
 }
 
@@ -1537,6 +1546,11 @@ input[type="range"]::-webkit-slider-thumb {
     margin-top: 24px;
 }
 
+.live-builder-actions .build-button {
+    min-height: 43px;
+    font-size: 12px;
+}
+
 .build-readiness {
     display: flex;
     align-items: center;
@@ -1549,13 +1563,13 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 .build-readiness strong {
-    font-size: 10px;
+    font-size: 12px;
 }
 
 .build-readiness small {
     margin-top: 2px;
     color: var(--text-muted);
-    font-size: 8px;
+    font-size: 10px;
 }
 
 .readiness-dot {
@@ -1586,7 +1600,7 @@ input[type="range"]::-webkit-slider-thumb {
     cursor: pointer;
     padding: 9px 11px;
     color: var(--text-muted);
-    font-size: 9px;
+    font-size: 11px;
     font-weight: 650;
     list-style: none;
     text-align: center;

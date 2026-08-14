@@ -386,36 +386,6 @@ public partial class Home
         return SelectedRoute?.Name ?? SelectedFamily?.Name ?? "Pipeline node";
     }
 
-    private string GetSelectedNodeDescription()
-    {
-        if (SelectedNodeKey == "outer")
-        {
-            return "Retries the entire selector through one global emergency client.";
-        }
-
-        if (SelectedNodeKey == "selector")
-        {
-            return "Selects a route-family IChatClient before any model is invoked.";
-        }
-
-        if (SelectedNodeKey.StartsWith("policy:", StringComparison.Ordinal) && SelectedFamily is { } family)
-        {
-            return $"{family.Name} owns this resilience policy and its ordered model clients.";
-        }
-
-        if (SelectedNodeKey.StartsWith("global:", StringComparison.Ordinal))
-        {
-            return "Runs only when the selected family client propagates a terminal failure.";
-        }
-
-        if (SelectedRoute is not null)
-        {
-            return "A configured leaf IChatClient with stable model and option identity.";
-        }
-
-        return "A stable semantic target whose implementation can be a single client or failover chain.";
-    }
-
     private static string GetSelectorTypeName(PipelineConfiguration configuration) =>
         configuration.SelectionPolicy switch
         {
@@ -426,9 +396,9 @@ public partial class Home
 
     private static string GetResilienceDescription(string policy) => policy switch
     {
-        "Ordered" => "A built-in ordered chain retries another compatible model after a pre-output failure.",
-        "Cooldown" => "A custom FailoverChatClient remembers failures and skips cooling models on later requests.",
-        _ => "The family target is one configured model client.",
+        "Ordered" => "Try clients in order after a pre-output failure.",
+        "Cooldown" => "Skip recently failed clients across requests.",
+        _ => "Use one configured client.",
     };
 
     private void BuildPipeline()
