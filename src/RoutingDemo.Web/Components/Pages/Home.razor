@@ -301,7 +301,7 @@
 
                                         <div class="inspector-grid two">
                                             <label>
-                                                <span>OpenAI model</span>
+                                                <span>Model ID</span>
                                                 <select @bind="route.ModelId">
                                                     @foreach (string model in ModelOptions)
                                                     {
@@ -510,7 +510,7 @@
                         }
                         <div class="chat-mode">
                             <span class="mode-dot"></span>
-                            Simulated OpenAI
+                            Simulated models
                             <span>/</span>
                             @(ActiveConfiguration!.Streaming ? "Streaming" : "Non-streaming")
                         </div>

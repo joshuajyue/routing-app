@@ -50,7 +50,7 @@ exclusive choices. The configurator has three independent concepts:
 | --- | --- | --- |
 | Selection | Which client should receive this request first? | Semantic match, direct single-family selection, sticky route |
 | Resilience | What should happen if that invocation fails? | None, built-in ordered failover, observable custom failover |
-| Route | What is this selectable client? | Named OpenAI model plus instructions and chat options |
+| Route | What is this selectable client? | Named simulated model plus instructions and chat options |
 
 A composed pipeline can therefore look like:
 
@@ -144,8 +144,7 @@ runs inside the selected family.
 Each model leaf has:
 
 - Stable route ID and display name.
-- Provider mode: simulated or OpenAI.
-- OpenAI model ID, with a curated list plus custom model ID entry.
+- Simulated model ID, with a curated list plus custom model ID entry.
 - Route instructions/persona.
 - Reasoning effort.
 - Temperature.
@@ -173,9 +172,8 @@ The main workspace uses a three-panel layout:
 The pipeline and debug sidebars can be hidden independently so the conversation
 can use the reclaimed space.
 
-The user can switch between a deterministic simulated provider and live OpenAI.
-Simulated mode should be the default so the demo works without credentials and
-failure timelines remain reproducible.
+All requests use deterministic simulated clients so the demo works without
+credentials and failure timelines remain reproducible.
 
 Structural policy, model, route-order, and option changes are not edited in the
 chat workspace. Tree interaction selects runtime clients for inspection and
@@ -417,12 +415,11 @@ routing feature.
 - Tool mode and multiple-tool-call setting for the tool-placement scenario.
 
 The model catalog needs capability metadata so incompatible controls can be
-disabled with an explanation. It should not assume every OpenAI model supports
-reasoning, temperature, tools, or every reasoning level.
+disabled with an explanation. The metadata is part of the simulator and should
+not imply live-provider capability discovery.
 
-Provider-specific raw options and background-response continuation are not
-required for the first implementation. They may be added only if they support a
-clear routing scenario.
+Provider-specific raw options and background-response continuation are out of
+scope.
 
 ## Fault injection
 
@@ -442,8 +439,8 @@ Every named route can be wrapped with deterministic demo faults:
 | Empty completed stream | Completed response with no committed output |
 | Manual cancellation | Cancellation is terminal |
 
-Faults should work identically around simulated and live OpenAI clients. The
-demo must never require a real provider outage.
+Faults run entirely within the simulator and never require a real provider
+outage.
 
 ### Availability versus policy health
 
@@ -525,7 +522,7 @@ display.
 The recommended host is a .NET 10 Blazor Web App using Interactive Server
 rendering:
 
-- `IChatClient` instances and credentials stay server-side.
+- `IChatClient` instances and demo state stay server-side.
 - Async streaming can update the debug timeline and transcript without a
   separate JavaScript backend.
 - The sample remains primarily C# and directly demonstrates the .NET APIs.
@@ -542,18 +539,14 @@ Proposed future projects:
 
 This is a proposed structure, not approval to scaffold it yet.
 
-## State and credentials
+## State and privacy
 
-- Keep the OpenAI API key in environment variables or .NET user secrets.
-- Never send credentials to browser storage or include them in exported
-  configurations.
 - Scope pipeline state, chat history, fault state, and diagnostics to one
   browser session.
 - Use an in-memory sticky-route store first, behind an interface compatible
   with `IDistributedCache`.
 - Do not persist prompts or responses by default.
-- Redact authorization details, raw headers, and provider payloads from debug
-  events.
+- Keep exported configurations free of chat content by default.
 
 ## Delivery phases
 
@@ -565,7 +558,7 @@ This is a proposed structure, not approval to scaffold it yet.
 
 ### Phase 1: built-in routing playground
 
-- Simulated and OpenAI route factories.
+- Deterministic simulated route factories.
 - Direct, semantic, built-in ordered failover, and composition presets.
 - Core route options.
 - Named-client diagnostics and deterministic faults.
@@ -591,11 +584,9 @@ This is a proposed structure, not approval to scaffold it yet.
 
 - Every P0 row in the capability matrix has an interactive scenario or an
   explicit automated verification.
-- A new user can run all core scenarios without an API key.
-- A live OpenAI route can be configured without exposing its key to the
-  browser.
+- Every scenario runs without credentials or network access.
 - The UI always distinguishes route name, configured model, and actual
-  provider-reported model.
+  simulated response model.
 - Pre-output and post-output failures visibly produce different failover
   behavior.
 - Every exact `FailoverChatClientAttempt` property and `isTerminal` can be
@@ -617,13 +608,14 @@ This is a proposed structure, not approval to scaffold it yet.
 ## Non-goals
 
 - Production multi-tenant routing infrastructure.
+- Live OpenAI or other provider integration.
 - Provider billing reconciliation or guaranteed cost estimates.
-- Automatic discovery of every OpenAI model and capability.
+- Automatic discovery of provider models and capabilities.
 - Real outage detection as a prerequisite for the demo.
 - Model cascading after a low-quality successful response.
 - Ensemble fan-out and response voting.
 - Hedged/racing requests.
 - A general-purpose visual workflow editor.
 - Editing structural pipeline configuration inline while chatting.
-- Persisting prompts, responses, or API keys.
+- Persisting prompts or responses.
 - Hiding experimental API status or compatibility limitations.

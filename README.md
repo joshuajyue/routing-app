@@ -40,7 +40,7 @@ controls, conversation, and debug information visible.
 dotnet run --project .\src\RoutingDemo.Web\RoutingDemo.Web.csproj
 ```
 
-The current prototype is deterministic and does not require an API key.
+The demo is intentionally deterministic and does not require an API key.
 
 ## Included
 
@@ -55,8 +55,7 @@ The current prototype is deterministic and does not require an API key.
 - The reasoning preset semantically selects low, medium, or high reasoning
   wrappers over the same model, with no failover between reasoning levels.
 - Optional whole-pipeline emergency fallback.
-- Per-route OpenAI model, reasoning, temperature, instruction, and token
-  controls.
+- Per-route model ID, reasoning, temperature, instruction, and token controls.
 - Simulated streaming and non-streaming chat.
 - Fail-next, timed kill, kill-until-revived, and revive controls.
 - Interactive runtime tree with health controls for the selected model client.
@@ -65,8 +64,8 @@ The current prototype is deterministic and does not require an API key.
   nested `FailoverChatClientAttempt`-shaped diagnostics.
 - Responsive, sans-serif visual system with no external UI dependency.
 
-The next implementation layer is replacing the simulator with real
-`Microsoft.Extensions.AI` clients while preserving the same UI contracts.
+Live provider integration is intentionally out of scope; the simulated clients
+are the final execution model for this teaching demo.
 
 ## Scope documents
 
