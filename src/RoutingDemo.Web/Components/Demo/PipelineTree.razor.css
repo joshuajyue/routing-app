@@ -1,0 +1,154 @@
+.pipeline-tree {
+    display: flex;
+    flex-direction: column;
+}
+
+.tree-node {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    padding: 11px;
+}
+
+.tree-node.root {
+    border-color: #cfcff4;
+    background: #fbfbff;
+}
+
+.node-glyph {
+    display: grid;
+    width: 29px;
+    height: 29px;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: 8px;
+    background: var(--surface-strong);
+    color: white;
+    font-size: 8px;
+    font-weight: 760;
+}
+
+.tree-node.router .node-glyph {
+    background: var(--accent);
+}
+
+.tree-node > div {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+}
+
+.tree-node strong {
+    overflow: hidden;
+    font-size: 10px;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tree-node small {
+    overflow: hidden;
+    margin-top: 2px;
+    color: var(--text-muted);
+    font-size: 8px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tree-children {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+    padding-left: 26px;
+}
+
+.tree-children::before {
+    position: absolute;
+    top: -10px;
+    bottom: 16px;
+    left: 13px;
+    width: 1px;
+    background: var(--border-strong);
+    content: "";
+}
+
+.tree-children > .tree-node::before,
+.route-branches > .tree-node::before {
+    position: absolute;
+    left: -14px;
+    width: 14px;
+    height: 1px;
+    background: var(--border-strong);
+    content: "";
+}
+
+.tree-children > .tree-node,
+.route-branches > .tree-node {
+    position: relative;
+}
+
+.route-branches {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+
+.tree-node.route {
+    min-height: 48px;
+}
+
+.route-dot {
+    width: 8px;
+    height: 8px;
+    flex: 0 0 auto;
+    border: 2px solid white;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 0 1px var(--success);
+}
+
+.tree-tag {
+    margin-left: auto;
+    background: var(--surface-subtle);
+    color: var(--text-muted);
+}
+
+.pipeline-tree.compact .tree-node {
+    border-radius: 8px;
+    padding: 8px;
+}
+
+.pipeline-tree.compact .node-glyph {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    font-size: 7px;
+}
+
+.pipeline-tree.compact .tree-node strong {
+    font-size: 9px;
+}
+
+.pipeline-tree.compact .tree-node small {
+    font-size: 7px;
+}
+
+.pipeline-tree.compact .tree-children {
+    padding-left: 20px;
+}
+
+.pipeline-tree.compact .tree-children::before {
+    left: 10px;
+}
+
+.pipeline-tree.compact .tree-children > .tree-node::before,
+.pipeline-tree.compact .route-branches > .tree-node::before {
+    left: -11px;
+    width: 11px;
+}

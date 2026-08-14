@@ -1,0 +1,93 @@
+@using RoutingDemo.Web.Demo
+
+<div class="pipeline-tree @(Compact ? "compact" : null)">
+    <div class="tree-node root">
+        <span class="node-glyph">@GetRootGlyph()</span>
+        <div>
+            <strong>@GetRootName()</strong>
+            <small>@GetRootDescription()</small>
+        </div>
+    </div>
+
+    <div class="tree-children">
+        @if (Configuration.SelectionPolicy != "None")
+        {
+            <div class="tree-node router">
+                <span class="node-glyph">@GetSelectionGlyph()</span>
+                <div>
+                    <strong>@GetSelectionName()</strong>
+                    <small>@GetSelectionDescription()</small>
+                </div>
+            </div>
+        }
+
+        <div class="route-branches">
+            @foreach (RouteDefinition route in Configuration.Routes)
+            {
+                <div class="tree-node route">
+                    <span class="route-dot"></span>
+                    <div>
+                        <strong>@route.Name</strong>
+                        <small>@route.ModelId / @ToTitle(route.ReasoningEffort) reasoning</small>
+                    </div>
+                    @if (route.IsDefault)
+                    {
+                        <span class="tree-tag">default</span>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public PipelineConfiguration Configuration { get; set; } = null!;
+
+    [Parameter]
+    public bool Compact { get; set; }
+
+    private string GetRootName() => Configuration.ResiliencePolicy switch
+    {
+        "Ordered" => "OrderedFailoverChatClient",
+        "Cooldown" => "CooldownFailoverChatClient",
+        _ when Configuration.SelectionPolicy == "Semantic" => "SemanticRoutingChatClient",
+        _ when Configuration.SelectionPolicy == "Callback" => "RoutingChatClient.Create",
+        _ => "Configured IChatClient",
+    };
+
+    private string GetRootDescription() => Configuration.ResiliencePolicy switch
+    {
+        "Ordered" => $"Static order / max {Configuration.MaximumAttempts} attempts",
+        "Cooldown" => $"{Configuration.CooldownSeconds}s cooldown / health memory",
+        _ => "Single selected client",
+    };
+
+    private string GetRootGlyph() => Configuration.ResiliencePolicy switch
+    {
+        "Ordered" => "OF",
+        "Cooldown" => "CD",
+        _ => "RC",
+    };
+
+    private string GetSelectionName() => Configuration.SelectionPolicy switch
+    {
+        "Semantic" => "SemanticRoutingChatClient",
+        "Callback" => "RoutingChatClient.Create",
+        _ => "Direct selection",
+    };
+
+    private string GetSelectionDescription() => Configuration.SelectionPolicy switch
+    {
+        "Semantic" => $"Top {Configuration.TopK} / {Configuration.ScoreAggregation} / threshold {Configuration.ScoreThreshold:0.00}",
+        "Callback" => "Request complexity callback",
+        _ => "First configured route",
+    };
+
+    private string GetSelectionGlyph() => Configuration.SelectionPolicy == "Semantic" ? "SR" : "CB";
+
+    private static string ToTitle(string value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? value
+            : char.ToUpperInvariant(value[0]) + value[1..];
+}

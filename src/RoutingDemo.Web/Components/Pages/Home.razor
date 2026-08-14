@@ -1,0 +1,776 @@
+@page "/"
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+@using RoutingDemo.Web.Demo
+
+<PageTitle>Routing AI Chat Demo</PageTitle>
+
+<div class="demo-shell">
+    <header class="topbar">
+        <button class="brand" type="button" @onclick="GoHome" aria-label="Routing AI demo home">
+            <span class="brand-mark">R</span>
+            <span>
+                <strong>routing.ai</strong>
+                <small>Microsoft.Extensions.AI</small>
+            </span>
+        </button>
+
+        @if (IsBuilt)
+        {
+            <div class="topbar-pipeline">
+                <span class="live-dot"></span>
+                <span>@ActiveConfiguration!.ScenarioName</span>
+                <span class="topbar-separator">/</span>
+                <span>@ActiveConfiguration.SelectionPolicy + @ActiveConfiguration.ResiliencePolicy</span>
+            </div>
+
+            <button class="button button-quiet" type="button" @onclick="RebuildPipeline">
+                Rebuild pipeline
+            </button>
+        }
+        else
+        {
+            <span class="prototype-badge">Interactive prototype</span>
+        }
+    </header>
+
+    @if (!IsBuilt)
+    {
+        <main class="builder-page">
+            <section class="builder-intro">
+                <div>
+                    <span class="eyebrow">Extensible routing playground</span>
+                    <h1>Build the pipeline.<br />Then watch it route.</h1>
+                </div>
+                <p>
+                    Configure selection, failover, and model behavior in a few steps.
+                    The resulting pipeline opens directly into an inspectable chat.
+                </p>
+            </section>
+
+            <nav class="stepper" aria-label="Pipeline build steps">
+                @for (var i = 0; i < BuilderSteps.Length; i++)
+                {
+                    var stepIndex = i;
+                    <button class="step @(CurrentStep == i ? "active" : null) @(CurrentStep > i ? "complete" : null)"
+                            type="button"
+                            @onclick="() => GoToStep(stepIndex)"
+                            disabled="@(i > CurrentStep)">
+                        <span class="step-number">@(i + 1)</span>
+                        <span>
+                            <strong>@BuilderSteps[i].Title</strong>
+                            <small>@BuilderSteps[i].Subtitle</small>
+                        </span>
+                    </button>
+                }
+            </nav>
+
+            <section class="builder-card">
+                @switch (CurrentStep)
+                {
+                    case 0:
+                        <div class="section-heading">
+                            <div>
+                                <span class="eyebrow">Start with a shape</span>
+                                <h2>Choose a scenario</h2>
+                            </div>
+                            <p>Each scenario is fully editable before the pipeline is built.</p>
+                        </div>
+
+                        <div class="scenario-grid">
+                            @foreach (ScenarioDefinition scenario in Scenarios)
+                            {
+                                <button class="scenario-card @(Draft.ScenarioId == scenario.Id ? "selected" : null)"
+                                        type="button"
+                                        @onclick="() => SelectScenario(scenario.Id)">
+                                    <span class="scenario-topline">
+                                        <span class="scenario-icon">@GetScenarioMonogram(scenario.Id)</span>
+                                        @if (scenario.Id == "semantic-failover")
+                                        {
+                                            <span class="recommended-label">Recommended</span>
+                                        }
+                                    </span>
+                                    <span class="scenario-eyebrow">@scenario.Eyebrow</span>
+                                    <strong>@scenario.Name</strong>
+                                    <span class="scenario-description">@scenario.Description</span>
+                                    <span class="scenario-policies">
+                                        <span>@scenario.SelectionPolicy</span>
+                                        <span class="policy-arrow">-&gt;</span>
+                                        <span>@scenario.ResiliencePolicy</span>
+                                    </span>
+                                </button>
+                            }
+                        </div>
+                        break;
+
+                    case 1:
+                        <div class="section-heading">
+                            <div>
+                                <span class="eyebrow">Compose behavior</span>
+                                <h2>Choose the routing layers</h2>
+                            </div>
+                            <p>Selection chooses the first client. Resilience decides what happens after failure.</p>
+                        </div>
+
+                        <div class="policy-section">
+                            <div class="policy-section-header">
+                                <span class="layer-number">01</span>
+                                <div>
+                                    <h3>Selection</h3>
+                                    <p>Which route should receive the request first?</p>
+                                </div>
+                            </div>
+                            <div class="policy-options">
+                                @foreach (var option in SelectionOptions)
+                                {
+                                    <button class="policy-option @(Draft.SelectionPolicy == option.Value ? "selected" : null)"
+                                            type="button"
+                                            @onclick="() => Draft.SelectionPolicy = option.Value">
+                                        <span class="radio-mark"></span>
+                                        <span>
+                                            <strong>@option.Label</strong>
+                                            <small>@option.Description</small>
+                                        </span>
+                                    </button>
+                                }
+                            </div>
+
+                            @if (Draft.SelectionPolicy == "Semantic")
+                            {
+                                <div class="inline-settings semantic-settings">
+                                    <label>
+                                        <span>Score threshold</span>
+                                        <strong>@Draft.ScoreThreshold.ToString("0.00")</strong>
+                                        <input type="range" min="0" max="1" step="0.05"
+                                               @bind="Draft.ScoreThreshold" @bind:event="oninput" />
+                                    </label>
+                                    <label>
+                                        <span>Top K</span>
+                                        <select @bind="Draft.TopK">
+                                            <option value="1">1</option>
+                                            <option value="3">3</option>
+                                            <option value="5">5</option>
+                                        </select>
+                                    </label>
+                                    <label>
+                                        <span>Aggregation</span>
+                                        <select @bind="Draft.ScoreAggregation">
+                                            <option>Mean</option>
+                                            <option>Sum</option>
+                                        </select>
+                                    </label>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="policy-divider"></div>
+
+                        <div class="policy-section">
+                            <div class="policy-section-header">
+                                <span class="layer-number">02</span>
+                                <div>
+                                    <h3>Resilience</h3>
+                                    <p>What should happen when an invocation fails?</p>
+                                </div>
+                            </div>
+                            <div class="policy-options">
+                                @foreach (var option in ResilienceOptions)
+                                {
+                                    <button class="policy-option @(Draft.ResiliencePolicy == option.Value ? "selected" : null)"
+                                            type="button"
+                                            @onclick="() => Draft.ResiliencePolicy = option.Value">
+                                        <span class="radio-mark"></span>
+                                        <span>
+                                            <strong>@option.Label</strong>
+                                            <small>@option.Description</small>
+                                        </span>
+                                    </button>
+                                }
+                            </div>
+
+                            @if (Draft.ResiliencePolicy != "None")
+                            {
+                                <div class="inline-settings resilience-settings">
+                                    <label>
+                                        <span>Maximum attempts</span>
+                                        <select @bind="Draft.MaximumAttempts">
+                                            <option value="1">1</option>
+                                            <option value="2">2</option>
+                                            <option value="3">3</option>
+                                            <option value="4">4</option>
+                                        </select>
+                                    </label>
+                                    @if (Draft.ResiliencePolicy == "Cooldown")
+                                    {
+                                        <label>
+                                            <span>Cooldown</span>
+                                            <select @bind="Draft.CooldownSeconds">
+                                                <option value="10">10 seconds</option>
+                                                <option value="30">30 seconds</option>
+                                                <option value="60">60 seconds</option>
+                                            </select>
+                                        </label>
+                                    }
+                                </div>
+                            }
+                        </div>
+                        break;
+
+                    case 2:
+                        <div class="section-heading">
+                            <div>
+                                <span class="eyebrow">Configure candidates</span>
+                                <h2>Set up the routes</h2>
+                            </div>
+                            <button class="button button-secondary" type="button" @onclick="AddRoute">
+                                Add route
+                            </button>
+                        </div>
+
+                        <div class="route-list">
+                            @for (var i = 0; i < Draft.Routes.Count; i++)
+                            {
+                                RouteDefinition route = Draft.Routes[i];
+                                var routeIndex = i;
+
+                                <article class="route-editor" @key="route.Id">
+                                    <header class="route-editor-header">
+                                        <div class="route-order">@(i + 1)</div>
+                                        <div>
+                                            <span class="route-kind">Named IChatClient</span>
+                                            <strong>@(string.IsNullOrWhiteSpace(route.Name) ? "Untitled route" : route.Name)</strong>
+                                        </div>
+                                        <div class="route-editor-actions">
+                                            @if (route.IsDefault)
+                                            {
+                                                <span class="default-label">Default</span>
+                                            }
+                                            else if (Draft.SelectionPolicy == "Semantic")
+                                            {
+                                                <button class="text-button" type="button" @onclick="() => MakeDefault(route)">
+                                                    Make default
+                                                </button>
+                                            }
+                                            <button class="icon-button" type="button" title="Move route up"
+                                                    disabled="@(routeIndex == 0)"
+                                                    @onclick="() => MoveRoute(routeIndex, -1)">Up</button>
+                                            <button class="icon-button" type="button" title="Move route down"
+                                                    disabled="@(routeIndex == Draft.Routes.Count - 1)"
+                                                    @onclick="() => MoveRoute(routeIndex, 1)">Down</button>
+                                            <button class="icon-button danger" type="button" title="Remove route"
+                                                    disabled="@(Draft.Routes.Count <= 2)"
+                                                    @onclick="() => RemoveRoute(route)">Remove</button>
+                                        </div>
+                                    </header>
+
+                                    <div class="route-fields">
+                                        <label>
+                                            <span>Route name</span>
+                                            <input type="text" @bind="route.Name" />
+                                        </label>
+                                        <label>
+                                            <span>Purpose</span>
+                                            <input type="text" @bind="route.Purpose" />
+                                        </label>
+                                        <label class="model-field">
+                                            <span>OpenAI model</span>
+                                            <select @bind="route.ModelId">
+                                                @foreach (string model in ModelOptions)
+                                                {
+                                                    <option value="@model">@model</option>
+                                                }
+                                            </select>
+                                        </label>
+                                        <label>
+                                            <span>Max output tokens</span>
+                                            <input type="number" min="64" max="16000" step="64"
+                                                   @bind="route.MaxOutputTokens" />
+                                        </label>
+                                    </div>
+
+                                    <div class="route-options-row">
+                                        <div class="field-group">
+                                            <span class="field-label">Reasoning effort</span>
+                                            <div class="segmented-control">
+                                                @foreach (string effort in ReasoningOptions)
+                                                {
+                                                    <button type="button"
+                                                            class="@(route.ReasoningEffort == effort ? "selected" : null)"
+                                                            @onclick="() => route.ReasoningEffort = effort">
+                                                        @ToTitle(effort)
+                                                    </button>
+                                                }
+                                            </div>
+                                        </div>
+                                        <label class="temperature-field">
+                                            <span>
+                                                <span>Temperature</span>
+                                                <strong>@route.Temperature.ToString("0.0")</strong>
+                                            </span>
+                                            <input type="range" min="0" max="1.5" step="0.1"
+                                                   @bind="route.Temperature" @bind:event="oninput" />
+                                        </label>
+                                    </div>
+
+                                    <div class="route-text-fields">
+                                        <label>
+                                            <span>Route instructions</span>
+                                            <textarea rows="2" @bind="route.Instructions"></textarea>
+                                        </label>
+                                        @if (Draft.SelectionPolicy == "Semantic" && !route.IsDefault)
+                                        {
+                                            <label>
+                                                <span>Semantic examples <small>comma separated</small></span>
+                                                <textarea rows="2" @bind="route.ProfileExamples"></textarea>
+                                            </label>
+                                        }
+                                    </div>
+                                </article>
+                            }
+                        </div>
+                        break;
+
+                    case 3:
+                        <div class="section-heading review-heading">
+                            <div>
+                                <span class="eyebrow">Ready to instantiate</span>
+                                <h2>Review the pipeline</h2>
+                            </div>
+                            <label class="streaming-toggle">
+                                <input type="checkbox" @bind="Draft.Streaming" />
+                                <span class="toggle-track"><span></span></span>
+                                <span>
+                                    <strong>Streaming responses</strong>
+                                    <small>Show time to first update and output commitment.</small>
+                                </span>
+                            </label>
+                        </div>
+
+                        <div class="review-grid">
+                            <div class="review-column">
+                                <div class="review-panel pipeline-preview">
+                                    <header>
+                                        <span>Pipeline graph</span>
+                                        <span class="valid-badge">Valid</span>
+                                    </header>
+                                    <PipelineTree Configuration="Draft" />
+                                </div>
+
+                                @if (GetWarnings().Count > 0)
+                                {
+                                    <div class="warning-panel">
+                                        <strong>Review notes</strong>
+                                        @foreach (string warning in GetWarnings())
+                                        {
+                                            <p>@warning</p>
+                                        }
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="review-column">
+                                <div class="review-panel summary-panel">
+                                    <header><span>Configuration</span></header>
+                                    <dl>
+                                        <div><dt>Selection</dt><dd>@Draft.SelectionPolicy</dd></div>
+                                        <div><dt>Resilience</dt><dd>@Draft.ResiliencePolicy</dd></div>
+                                        <div><dt>Routes</dt><dd>@Draft.Routes.Count</dd></div>
+                                        <div><dt>Max attempts</dt><dd>@Draft.MaximumAttempts</dd></div>
+                                        @if (Draft.SelectionPolicy == "Semantic")
+                                        {
+                                            <div><dt>Semantic scoring</dt><dd>Top @Draft.TopK / @Draft.ScoreAggregation / @Draft.ScoreThreshold.ToString("0.00")</dd></div>
+                                        }
+                                        @if (Draft.ResiliencePolicy == "Cooldown")
+                                        {
+                                            <div><dt>Cooldown</dt><dd>@Draft.CooldownSeconds seconds</dd></div>
+                                        }
+                                    </dl>
+                                </div>
+
+                                <details class="code-preview">
+                                    <summary>Equivalent C# shape</summary>
+                                    <pre><code>@BuildCodePreview(Draft)</code></pre>
+                                </details>
+                            </div>
+                        </div>
+                        break;
+                }
+
+                <footer class="builder-actions">
+                    <button class="button button-quiet" type="button"
+                            disabled="@(CurrentStep == 0)"
+                            @onclick="PreviousStep">
+                        Back
+                    </button>
+                    <span class="step-context">Step @(CurrentStep + 1) of @BuilderSteps.Length</span>
+                    @if (CurrentStep < BuilderSteps.Length - 1)
+                    {
+                        <button class="button button-primary" type="button"
+                                disabled="@(!CanAdvance)"
+                                @onclick="NextStep">
+                            Continue
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="button button-primary build-button" type="button"
+                                disabled="@(!CanBuild)"
+                                @onclick="BuildPipeline">
+                            Build and start chat
+                            <span>-&gt;</span>
+                        </button>
+                    }
+                </footer>
+            </section>
+        </main>
+    }
+    else
+    {
+        <main class="workspace">
+            <aside class="pipeline-sidebar">
+                <section class="sidebar-section">
+                    <div class="sidebar-heading">
+                        <span class="eyebrow">Active pipeline</span>
+                        <span class="session-id">@SessionId</span>
+                    </div>
+                    <div class="compact-pipeline">
+                        <PipelineTree Configuration="ActiveConfiguration!" Compact="true" />
+                    </div>
+                </section>
+
+                <section class="sidebar-section models-section">
+                    <div class="sidebar-heading">
+                        <span class="eyebrow">Model health</span>
+                        <span class="model-count">@ActiveConfiguration!.Routes.Count routes</span>
+                    </div>
+
+                    <div class="health-list">
+                        @foreach (RouteDefinition route in ActiveConfiguration.Routes)
+                        {
+                            <article class="health-card @GetRouteStatusClass(route)" @key="route.Id">
+                                <div class="health-card-main">
+                                    <span class="health-indicator"></span>
+                                    <div>
+                                        <strong>@route.Name</strong>
+                                        <small>@route.ModelId</small>
+                                    </div>
+                                    <span class="health-label">@GetRouteStatusLabel(route)</span>
+                                </div>
+
+                                <div class="health-actions">
+                                    @if (IsRouteUnavailable(route) || IsRouteCoolingDown(route))
+                                    {
+                                        <button type="button" @onclick="() => ReviveRoute(route)">Revive</button>
+                                    }
+                                    else
+                                    {
+                                        <button type="button" @onclick="() => FailNext(route)">Fail next</button>
+                                        <button type="button" @onclick="() => KillFor(route, 30)">Kill 30s</button>
+                                        <button type="button" @onclick="() => KillUntilRevived(route)">Kill until revive</button>
+                                    }
+                                </div>
+                            </article>
+                        }
+                    </div>
+                </section>
+
+                <section class="sidebar-note">
+                    <span class="note-icon">i</span>
+                    <p>
+                        Availability is simulated. Cooldown state is maintained separately by the routing policy.
+                    </p>
+                </section>
+            </aside>
+
+            <section class="chat-panel">
+                <header class="chat-header">
+                    <div>
+                        <span class="eyebrow">Chat demo</span>
+                        <h2>Ask the pipeline</h2>
+                    </div>
+                    <div class="chat-header-actions">
+                        @if (Messages.Count > 0 && !IsSending)
+                        {
+                            <button class="clear-chat-button" type="button" @onclick="ClearTranscript">
+                                Clear chat
+                            </button>
+                        }
+                        <div class="chat-mode">
+                            <span class="mode-dot"></span>
+                            Simulated OpenAI
+                            <span>/</span>
+                            @(ActiveConfiguration.Streaming ? "Streaming" : "Non-streaming")
+                        </div>
+                    </div>
+                </header>
+
+                <div class="transcript">
+                    @if (Messages.Count == 0)
+                    {
+                        <div class="chat-empty">
+                            <div class="empty-orbit">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                            </div>
+                            <h3>Send a message through the pipeline.</h3>
+                            <p>Try a prompt, then take a model down and send it again.</p>
+                            <div class="prompt-suggestions">
+                                @foreach (string suggestion in PromptSuggestions)
+                                {
+                                    <button type="button" @onclick="() => UsePrompt(suggestion)">
+                                        @suggestion
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (ChatEntry message in Messages)
+                        {
+                            <article class="message @message.Role">
+                                <div class="message-avatar">@(message.Role == "user" ? "You" : "AI")</div>
+                                <div class="message-content">
+                                    <header>
+                                        <strong>@(message.Role == "user" ? "You" : message.RouteName ?? "Router")</strong>
+                                        @if (message.ModelId is not null)
+                                        {
+                                            <span>@message.ModelId</span>
+                                        }
+                                    </header>
+                                    <p>@message.Content</p>
+                                    @if (message.IsPending)
+                                    {
+                                        <span class="typing-indicator"><i></i><i></i><i></i></span>
+                                    }
+                                </div>
+                            </article>
+                        }
+                    }
+                </div>
+
+                <footer class="composer">
+                    <div class="composer-box">
+                        <textarea rows="2"
+                                  placeholder="Message the routing pipeline..."
+                                  aria-label="Chat message"
+                                  disabled="@IsSending"
+                                  @bind="Prompt"></textarea>
+                        <div class="composer-footer">
+                            <span>Enter a prompt, then inspect the routing trace.</span>
+                            @if (IsSending)
+                            {
+                                <button class="cancel-button" type="button" @onclick="CancelRequest">Cancel</button>
+                            }
+                            else
+                            {
+                                <button class="send-button" type="button"
+                                        disabled="@string.IsNullOrWhiteSpace(Prompt)"
+                                        @onclick="SendAsync"
+                                        aria-label="Send message">
+                                    Send
+                                    <span>-&gt;</span>
+                                </button>
+                            }
+                        </div>
+                    </div>
+                </footer>
+            </section>
+
+            <aside class="debug-panel">
+                <header class="debug-header">
+                    <div>
+                        <span class="eyebrow">Request inspector</span>
+                        <h2>Debug</h2>
+                    </div>
+                    @if (CurrentDebug is not null)
+                    {
+                        <span class="request-id">@CurrentDebug.RequestId</span>
+                    }
+                </header>
+
+                <nav class="debug-tabs" aria-label="Debug views">
+                    @foreach (string tab in DebugTabs)
+                    {
+                        <button class="@(DebugTab == tab ? "active" : null)"
+                                type="button"
+                                @onclick="() => DebugTab = tab">
+                            @tab
+                            @if (tab == "Attempts" && CurrentDebug?.Attempts.Count > 0)
+                            {
+                                <span>@CurrentDebug.Attempts.Count</span>
+                            }
+                        </button>
+                    }
+                </nav>
+
+                <div class="debug-content">
+                    @if (CurrentDebug is null)
+                    {
+                        <div class="debug-empty">
+                            <span class="debug-empty-icon">_</span>
+                            <strong>No request selected</strong>
+                            <p>Send a chat message to populate routing evidence and attempt data.</p>
+                        </div>
+                    }
+                    else if (DebugTab == "Summary")
+                    {
+                        <section class="debug-summary-card">
+                            <div class="outcome-row">
+                                <span class="outcome-dot @CurrentDebug.Outcome.ToLowerInvariant()"></span>
+                                <div>
+                                    <small>Outcome</small>
+                                    <strong>@CurrentDebug.Outcome</strong>
+                                </div>
+                                <span class="finish-reason">@CurrentDebug.FinishReason</span>
+                            </div>
+                            <dl>
+                                <div><dt>Selected route</dt><dd>@CurrentDebug.SelectedRoute</dd></div>
+                                <div><dt>Completed route</dt><dd>@CurrentDebug.FinalRoute</dd></div>
+                                <div><dt>Configured model</dt><dd>@CurrentDebug.ConfiguredModel</dd></div>
+                                <div><dt>Actual model</dt><dd>@CurrentDebug.ActualModel</dd></div>
+                            </dl>
+                            <div class="usage-row">
+                                <span><strong>@CurrentDebug.InputTokens</strong> input</span>
+                                <span><strong>@CurrentDebug.OutputTokens</strong> output</span>
+                            </div>
+                        </section>
+
+                        @if (CurrentDebug.Scores.Count > 0)
+                        {
+                            <section class="debug-section">
+                                <div class="debug-section-heading">
+                                    <h3>Semantic evidence</h3>
+                                    <span>@ActiveConfiguration.ScoreAggregation / top @ActiveConfiguration.TopK</span>
+                                </div>
+                                <div class="score-list">
+                                    @foreach (RoutingScore score in CurrentDebug.Scores.OrderByDescending(score => score.Score))
+                                    {
+                                        <div class="score-row">
+                                            <div>
+                                                <strong>@score.RouteName</strong>
+                                                <small>@(string.IsNullOrWhiteSpace(score.MatchedTerms) ? "No direct terms" : score.MatchedTerms)</small>
+                                            </div>
+                                            <div class="score-meter">
+                                                <span style="width: @($"{Math.Clamp(score.Score, 0, 1) * 100:0}%")"></span>
+                                            </div>
+                                            <strong>@score.Score.ToString("0.00")</strong>
+                                        </div>
+                                    }
+                                </div>
+                                <p class="threshold-note">Threshold @ActiveConfiguration.ScoreThreshold.ToString("0.00")</p>
+                            </section>
+                        }
+
+                        <section class="debug-section">
+                            <div class="debug-section-heading">
+                                <h3>Event timeline</h3>
+                                <button type="button" @onclick="ClearDebugEvents">Clear</button>
+                            </div>
+                            <div class="event-list">
+                                @foreach (DebugEventRecord item in CurrentDebug.Events.AsEnumerable().Reverse())
+                                {
+                                    <div class="event-row">
+                                        <span class="event-node @item.Kind.ToLowerInvariant()"></span>
+                                        <div>
+                                            <span class="event-time">@item.Timestamp.ToString("HH:mm:ss.fff")</span>
+                                            <strong>@item.Title</strong>
+                                            <p>@item.Detail</p>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </section>
+                    }
+                    else if (DebugTab == "Attempts")
+                    {
+                        <section class="debug-section attempts-section">
+                            <div class="debug-section-heading">
+                                <h3>Failover attempts</h3>
+                                <span>@CurrentDebug.Attempts.Count total</span>
+                            </div>
+                            @if (CurrentDebug.Attempts.Count == 0)
+                            {
+                                <p class="muted-copy">No client invocation has completed yet.</p>
+                            }
+                            else
+                            {
+                                <div class="attempt-list">
+                                    @foreach (AttemptRecord attempt in CurrentDebug.Attempts)
+                                    {
+                                        <article class="attempt-card @attempt.Status.ToLowerInvariant()">
+                                            <header>
+                                                <span class="attempt-number">@attempt.Number</span>
+                                                <div>
+                                                    <strong>@attempt.RouteName</strong>
+                                                    <small>@attempt.ModelId</small>
+                                                </div>
+                                                <span class="attempt-status">@attempt.Status</span>
+                                            </header>
+                                            <dl>
+                                                <div><dt>Duration</dt><dd>@attempt.DurationMs ms</dd></div>
+                                                <div><dt>TTFU</dt><dd>@(attempt.TimeToFirstUpdateMs is null ? "--" : $"{attempt.TimeToFirstUpdateMs} ms")</dd></div>
+                                                <div><dt>Completed</dt><dd>@FormatBoolean(attempt.ResponseCompleted)</dd></div>
+                                                <div><dt>Committed</dt><dd>@FormatBoolean(attempt.OutputCommitted)</dd></div>
+                                                <div><dt>Terminal</dt><dd>@FormatBoolean(attempt.IsTerminal)</dd></div>
+                                            </dl>
+                                            @if (attempt.Exception is not null)
+                                            {
+                                                <p class="attempt-exception">@attempt.Exception</p>
+                                            }
+                                        </article>
+                                    }
+                                </div>
+                            }
+                        </section>
+                    }
+                    else
+                    {
+                        <section class="debug-section options-section">
+                            <div class="debug-section-heading">
+                                <h3>Request options</h3>
+                                <span>Cloned per attempt</span>
+                            </div>
+                            <div class="option-layer">
+                                <span>Caller</span>
+                                <dl>
+                                    <div><dt>Streaming</dt><dd>@FormatBoolean(ActiveConfiguration.Streaming)</dd></div>
+                                    <div><dt>Messages</dt><dd>@Messages.Count</dd></div>
+                                    <div><dt>Max attempts</dt><dd>@ActiveConfiguration.MaximumAttempts</dd></div>
+                                </dl>
+                            </div>
+                            <div class="layer-connector">+</div>
+                            @{
+                                RouteDefinition? effectiveRoute = ActiveConfiguration.Routes.FirstOrDefault(
+                                    route => route.Name == CurrentDebug.FinalRoute);
+                            }
+                            <div class="option-layer accent">
+                                <span>Route wrapper</span>
+                                @if (effectiveRoute is not null)
+                                {
+                                    <dl>
+                                        <div><dt>Model</dt><dd>@effectiveRoute.ModelId</dd></div>
+                                        <div><dt>Reasoning</dt><dd>@ToTitle(effectiveRoute.ReasoningEffort)</dd></div>
+                                        <div><dt>Temperature</dt><dd>@effectiveRoute.Temperature.ToString("0.0")</dd></div>
+                                        <div><dt>Max output</dt><dd>@effectiveRoute.MaxOutputTokens</dd></div>
+                                    </dl>
+                                    <p>@effectiveRoute.Instructions</p>
+                                }
+                                else
+                                {
+                                    <p>No route completed the request.</p>
+                                }
+                            </div>
+
+                            <details class="raw-config">
+                                <summary>Pipeline shape</summary>
+                                <pre><code>@BuildCodePreview(ActiveConfiguration)</code></pre>
+                            </details>
+                        </section>
+                    }
+                </div>
+            </aside>
+        </main>
+    }
+</div>
