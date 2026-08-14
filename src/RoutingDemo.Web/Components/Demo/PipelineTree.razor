@@ -73,20 +73,17 @@
         string glyph = Configuration.SelectionPolicy switch
         {
             "Semantic" => "SR",
-            "Callback" => "CB",
             _ => "DR",
         };
         string name = Configuration.SelectionPolicy switch
         {
             "Semantic" => "SemanticRoutingChatClient",
-            "Callback" => "RoutingChatClient.Create",
             _ => "Direct route",
         };
         string description = Configuration.SelectionPolicy switch
         {
             "Semantic" => $"Top {Configuration.TopK} / {Configuration.ScoreAggregation} / threshold {Configuration.ScoreThreshold:0.00}",
-            "Callback" => "Request complexity selects a route family",
-            _ => "Always select the first route family",
+            _ => "One route family",
         };
 
         builder.OpenElement(0, "button");

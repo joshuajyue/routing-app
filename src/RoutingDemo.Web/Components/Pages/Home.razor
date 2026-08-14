@@ -118,9 +118,14 @@
                                             <select value="@Draft.SelectionPolicy"
                                                     @onchange="OnSelectionChanged">
                                                 <option>Semantic</option>
-                                                <option>Callback</option>
-                                                <option>None</option>
+                                                <option value="Direct" disabled="@(Draft.Families.Count != 1)">Direct</option>
                                             </select>
+                                            @if (Draft.Families.Count != 1)
+                                            {
+                                                <small class="field-help constraint-help">
+                                                    Direct requires exactly one route family.
+                                                </small>
+                                            }
                                         </label>
 
                                         @if (Draft.SelectionPolicy == "Semantic")

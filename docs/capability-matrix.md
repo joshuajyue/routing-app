@@ -9,11 +9,11 @@ verified outside the main interaction.
 | Capability | Demo treatment | Evidence | Priority |
 | --- | --- | --- | --- |
 | One `RoutingContext` per request | Assign and display a request ID around context creation | Event timeline | P0 |
-| Request messages available to selection | Callback preset displays the messages inspected by its policy | Routing evidence | P0 |
+| Request messages available to selection | Focused callback API scenario displays the messages inspected by code | Code sample or automated scenario | P1 |
 | Caller `ChatOptions` are cloned | Mutate the caller object after starting a controlled request and show no effect | Scenario test and options diff | P1 |
 | Context options can carry request-level policy changes | Custom callback modifies the request-local snapshot | Options diff | P0 |
 | Custom `RoutingContext` subclass carries request-scoped state | Sticky or observable policy stores state on a derived context | Policy state inspector | P1 |
-| `RoutingChatClient.Create` callback selection | Cheap-versus-powerful rule preset | Selected route event | P0 |
+| `RoutingChatClient.Create` callback selection | Keep outside the visual builder until an explicit rule editor exists | Code sample or automated scenario | P1 |
 | Derived `RoutingChatClient` policy | Sticky policy or explicit stateful policy | Route graph and policy events | P0 |
 | Streaming forwarding | Stream a normal response through the selected client | Transcript and update events | P0 |
 | Non-streaming forwarding | Toggle invocation mode | Response event | P0 |
@@ -87,11 +87,12 @@ verified outside the main interaction.
 | Capability | Demo treatment | Evidence | Priority |
 | --- | --- | --- | --- |
 | Router is itself an `IChatClient` | Put semantic router inside ordered failover | Nested pipeline graph | P0 |
+| Direct selector invariant | Permit Direct only when exactly one route family exists | Selector validation and live tree | P0 |
 | Semantic profile targets a router | Map coding and creative profiles to independent ordered or cooldown family clients | Interactive composition tree | P0 |
 | Per-family resilience | Configure exactly one client for Single, or multiple clients under ordered/cooldown behavior | Family-node inspector and invariant validation | P0 |
 | Inner versus outer failure scope | Exhaust a selected family, then invoke a global emergency client outside the semantic router | Nested attempt and event timelines | P0 |
 | Route-level configured wrappers | Different instructions/options per route | Options diff | P0 |
-| One model at multiple reasoning levels | Low/high wrappers over one OpenAI client | Distinct routes and effective options | P0 |
+| One model at multiple reasoning levels | Semantic low/medium/high single-client families over one OpenAI model | Distinct routes and effective options | P0 |
 | Sticky application-session routing | Pin only after successful completion | Cache/pin events | P1 |
 | One-shot manual failure | Fail the next invocation, then return the route to healthy | Availability state and invocation trace | P0 |
 | Timed manual kill | Keep a route down with a visible expiry countdown | Availability state and attempt trace | P0 |

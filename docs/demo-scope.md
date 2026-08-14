@@ -36,9 +36,10 @@ It also demonstrates that custom policies and configured clients compose
 because each layer is an `IChatClient`.
 
 The target does not implement every possible custom policy. It includes enough
-representative policies to prove the extension points: callback routing,
-request-scoped state, sticky selection, per-route option shaping, attempt
-observation, and a health-aware policy.
+representative policies to prove request-scoped state, sticky selection,
+per-route option shaping, attempt observation, and health-aware routing.
+`RoutingChatClient.Create` remains a code-level extension point rather than a
+visual option until the UI has an explicit rule editor.
 
 ## Product model
 
@@ -47,7 +48,7 @@ exclusive choices. The configurator has three independent concepts:
 
 | Layer | Question | Examples |
 | --- | --- | --- |
-| Selection | Which client should receive this request first? | Callback rule, semantic match, sticky route |
+| Selection | Which client should receive this request first? | Semantic match, direct single-family selection, sticky route |
 | Resilience | What should happen if that invocation fails? | None, built-in ordered failover, observable custom failover |
 | Route | What is this selectable client? | Named OpenAI model plus instructions and chat options |
 
@@ -109,7 +110,7 @@ Starting scenarios are accelerators inside the first step:
 | Semantic plus outer fallback | Wrap the semantic router and a global emergency client in ordered failover |
 | Observable failover | Expose exact `FailoverChatClientAttempt` records from a custom `FailoverChatClient` |
 | Cooldown failover | Temporarily or indefinitely kill routes and let a custom policy skip unhealthy clients |
-| Reasoning-level router | Route between low- and high-reasoning wrappers over one model |
+| Reasoning levels | Semantically select low, medium, or high reasoning wrappers over one model |
 | Sticky conversation | Classify once, pin only after a completed response, and reuse the route |
 | Adaptive health | Rank routes using observed latency after cooldown behavior is understood |
 
@@ -243,11 +244,11 @@ during chat. The full build form should not compete with the transcript.
 
 ## Required scenarios
 
-### Callback routing
+### Callback routing API
 
-Use `RoutingChatClient.Create` to route a simple request to a cheap or powerful
-client. Show the request messages and option snapshot available through
-`RoutingContext`.
+Do not expose `RoutingChatClient.Create` as an unexplained visual policy. Cover
+the callback API in a focused code sample or automated scenario until the demo
+has a rule editor that can define and explain the callback's behavior.
 
 ### Semantic routing
 
@@ -330,8 +331,9 @@ Show:
 - Caller options are cloned for routing and invocation.
 - Request-level changes persist across selections in a custom policy.
 - Route-level wrappers apply stable instructions or generation options.
-- Low- and high-reasoning wrappers over the same base model are distinct
-  routes.
+- Low-, medium-, and high-reasoning wrappers over the same base model are
+  distinct single-client semantic families. They are selection alternatives,
+  not failover candidates.
 
 The inspector should render an options diff rather than only the final values.
 
@@ -559,7 +561,7 @@ This is a proposed structure, not approval to scaffold it yet.
 ### Phase 1: built-in routing playground
 
 - Simulated and OpenAI route factories.
-- Callback, semantic, built-in ordered failover, and composition presets.
+- Direct, semantic, built-in ordered failover, and composition presets.
 - Core route options.
 - Named-client diagnostics and deterministic faults.
 - Streaming and non-streaming chat.

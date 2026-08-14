@@ -34,10 +34,10 @@ public partial class Home
         new(
             "reasoning",
             "Option shaping",
-            "Reasoning-level families",
-            "A callback chooses a routine or deep route family built from configured wrappers over the same model.",
-            "Callback",
-            "Configured clients"),
+            "Reasoning levels",
+            "Semantic routing selects low, medium, or high reasoning wrappers over the same model.",
+            "Semantic",
+            "Low / medium / high"),
     ];
 
     private static readonly (string Value, string Label, string Description)[] ResilienceOptions =
@@ -112,6 +112,7 @@ public partial class Home
         Draft.AllRoutes().Select(route => route.Name.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Count() == Draft.AllRoutes().Count() &&
+        (Draft.SelectionPolicy != "Direct" || Draft.Families.Count == 1) &&
         (Draft.SelectionPolicy != "Semantic" ||
          (Draft.Families.Count(family => family.IsDefault) == 1 &&
           Draft.Families.Where(family => !family.IsDefault)
@@ -148,6 +149,11 @@ public partial class Home
 
     private void SetSelectionPolicy(string policy)
     {
+        if (policy == "Direct" && Draft.Families.Count != 1)
+        {
+            return;
+        }
+
         Draft.SelectionPolicy = policy;
         if (policy == "Semantic" && Draft.Families.All(family => !family.IsDefault))
         {
@@ -160,6 +166,12 @@ public partial class Home
 
     private void AddFamily()
     {
+        if (Draft.SelectionPolicy == "Direct")
+        {
+            Draft.SelectionPolicy = "Semantic";
+            EnsureSemanticDefault();
+        }
+
         int familyNumber = Draft.Families.Count + 1;
         var family = CreateFamily(
             $"family-{familyNumber}",
@@ -214,6 +226,14 @@ public partial class Home
         foreach (RouteFamilyDefinition candidate in Draft.Families)
         {
             candidate.IsDefault = ReferenceEquals(candidate, family);
+        }
+    }
+
+    private void EnsureSemanticDefault()
+    {
+        if (Draft.Families.Count > 0 && Draft.Families.All(family => !family.IsDefault))
+        {
+            Draft.Families[0].IsDefault = true;
         }
     }
 
@@ -390,7 +410,6 @@ public partial class Home
         configuration.SelectionPolicy switch
         {
             "Semantic" => "SemanticRoutingChatClient",
-            "Callback" => "RoutingChatClient.Create",
             _ => "Direct route selection",
         };
 
@@ -485,7 +504,7 @@ public partial class Home
         RouteFamilyDefinition selectedFamily = SelectRouteFamily(configuration, prompt, debug);
         debug.SelectedFamilyId = selectedFamily.Id;
         debug.SelectedRoute = selectedFamily.Name;
-        debug.ResiliencePolicy = selectedFamily.ResiliencePolicy;
+        debug.ResiliencePolicy = GetResilienceDisplayName(selectedFamily.ResiliencePolicy);
         debug.ConfiguredModel = selectedFamily.Routes[0].ModelId;
         AddEvent(
             debug,
@@ -587,7 +606,7 @@ public partial class Home
                 maximumAttempts);
             InvocationOutcome outcome = await InvokeRouteAsync(
                 route,
-                $"{family.Name} / {family.ResiliencePolicy}",
+                $"{family.Name} / {GetResilienceDisplayName(family.ResiliencePolicy)}",
                 prompt,
                 debug,
                 execution,
@@ -804,25 +823,6 @@ public partial class Home
                 "Default family selected",
                 $"No profile cleared {configuration.ScoreThreshold:0.00}; using {fallback.Name}.");
             return fallback;
-        }
-
-        if (configuration.SelectionPolicy == "Callback")
-        {
-            bool complex = prompt.Length > 90 ||
-                           ContainsAny(prompt, "architecture", "analyze", "complex", "debug", "reason");
-            RouteFamilyDefinition selected = complex
-                ? configuration.Families.FirstOrDefault(family =>
-                    family.Routes.Any(route => route.ReasoningEffort == "high")) ??
-                  configuration.Families[0]
-                : configuration.Families.FirstOrDefault(family =>
-                    family.Routes.Any(route => route.ReasoningEffort is "low" or "none")) ??
-                  configuration.Families[0];
-            AddEvent(
-                debug,
-                "Selection",
-                "Callback evaluated",
-                complex ? "Request classified as complex." : "Request classified as routine.");
-            return selected;
         }
 
         return configuration.Families[0];
@@ -1109,6 +1109,12 @@ public partial class Home
         string layer,
         string prompt)
     {
+        if (route.Name.EndsWith("-reasoning", StringComparison.Ordinal))
+        {
+            return $"{route.Name} handled this request on {route.ModelId} with {route.ReasoningEffort} reasoning. " +
+                   "Semantic routing selected the reasoning-effort wrapper directly; no failover chain sits between reasoning levels.";
+        }
+
         if (ContainsAny(prompt, "code", "c#", "bug", "refactor", "function", "service"))
         {
             return $"{route.Name} handled the coding request on {route.ModelId}. " +
@@ -1186,6 +1192,7 @@ public partial class Home
 
     private bool HasValidTree() =>
         Draft.Families.Count >= 1 &&
+        (Draft.SelectionPolicy != "Direct" || Draft.Families.Count == 1) &&
         Draft.Families.All(family =>
             !string.IsNullOrWhiteSpace(family.Name) &&
             family.Routes.Count >= 1 &&
@@ -1226,6 +1233,11 @@ public partial class Home
             warnings.Add("The outer emergency fallback needs both a client name and model ID.");
         }
 
+        if (Draft.SelectionPolicy == "Direct" && Draft.Families.Count != 1)
+        {
+            warnings.Add("Direct selection requires exactly one route family.");
+        }
+
         return warnings;
     }
 
@@ -1233,9 +1245,7 @@ public partial class Home
     {
         string inner = configuration.SelectionPolicy == "Semantic"
             ? "Semantic families"
-            : configuration.SelectionPolicy == "Callback"
-                ? "Callback families"
-                : "Direct family";
+            : "Direct family";
         return configuration.GlobalFallbackEnabled ? $"Outer failover / {inner}" : inner;
     }
 
@@ -1245,6 +1255,9 @@ public partial class Home
         "Cooldown" => "CooldownFailoverChatClient",
         _ => "configured IChatClient",
     };
+
+    private static string GetResilienceDisplayName(string policy) =>
+        policy == "None" ? "Single" : policy;
 
     private static List<RouteLocation> GetRouteLocations(PipelineConfiguration configuration)
     {
@@ -1329,14 +1342,6 @@ public partial class Home
             builder.AppendLine($"    defaultClient: {ToVariableName(defaultFamily.Name)}Route,");
             builder.AppendLine($"    scoreThreshold: {configuration.ScoreThreshold:0.00}f,");
             builder.AppendLine($"    topK: {configuration.TopK});");
-            selectorVariable = "selector";
-        }
-        else if (configuration.SelectionPolicy == "Callback")
-        {
-            builder.AppendLine("using var selector = RoutingChatClient.Create((context, ct) =>");
-            builder.AppendLine("    new(isComplex(context)");
-            builder.AppendLine($"        ? {ToVariableName(configuration.Families.Last().Name)}Route");
-            builder.AppendLine($"        : {ToVariableName(configuration.Families.First().Name)}Route));");
             selectorVariable = "selector";
         }
         else
@@ -1505,7 +1510,7 @@ public partial class Home
         {
             ScenarioId = "cooldown",
             ScenarioName = "Cooldown route family",
-            SelectionPolicy = "None",
+            SelectionPolicy = "Direct",
             GlobalFallbackEnabled = false,
             Families =
             [
@@ -1527,36 +1532,40 @@ public partial class Home
         new()
         {
             ScenarioId = "reasoning",
-            ScenarioName = "Reasoning-level families",
-            SelectionPolicy = "Callback",
-            GlobalFallbackEnabled = true,
+            ScenarioName = "Reasoning levels",
+            SelectionPolicy = "Semantic",
+            ScoreThreshold = 0.35,
+            TopK = 3,
+            ScoreAggregation = "Mean",
+            GlobalFallbackEnabled = false,
             Families =
             [
                 CreateFamily(
-                    "routine",
-                    "Routine requests",
-                    "simple, routine",
+                    "low",
+                    "Low reasoning",
+                    "quick answer, simple question, short summary, rewrite, routine request",
                     "None",
                     [
-                        CreateRoute("fast", "Low reasoning wrapper", "gpt-5.4", "low", 0.2, "Answer routine requests quickly."),
+                        CreateRoute("low-reasoning", "Low reasoning wrapper", "gpt-5.4", "low", 0.2, "Answer routine requests quickly and directly."),
                     ]),
                 CreateFamily(
-                    "deep",
-                    "Complex requests",
-                    "complex, architecture, analyze",
-                    "Ordered",
+                    "medium",
+                    "Medium reasoning",
+                    "explain a concept, compare options, make a plan, general analysis",
+                    "None",
                     [
-                        CreateRoute("deep-primary", "High reasoning wrapper", "gpt-5.4", "high", 0.2, "Analyze complex requests carefully."),
-                        CreateRoute("deep-backup", "Medium reasoning wrapper", "gpt-5.4", "medium", 0.2, "Back up complex requests."),
+                        CreateRoute("medium-reasoning", "Medium reasoning wrapper", "gpt-5.4", "medium", 0.2, "Use balanced reasoning for general analysis."),
+                    ],
+                    isDefault: true),
+                CreateFamily(
+                    "high",
+                    "High reasoning",
+                    "complex architecture, difficult debugging, deep analysis, multi-step reasoning, hard problem",
+                    "None",
+                    [
+                        CreateRoute("high-reasoning", "High reasoning wrapper", "gpt-5.4", "high", 0.2, "Reason carefully through difficult multi-step requests."),
                     ]),
             ],
-            GlobalFallback = CreateRoute(
-                "global-emergency",
-                "Whole-pipeline fallback",
-                "gpt-4o-mini",
-                "low",
-                0.2,
-                "Provide a concise response if a selected reasoning route fails."),
         };
 
     private static RouteFamilyDefinition CreateFamily(

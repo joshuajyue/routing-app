@@ -11,7 +11,7 @@ simulated clients. Remaining decisions apply to wiring the real routing APIs.
 | Initial host | .NET 10 Blazor Web App with Interactive Server rendering | Keeps `IChatClient`, streaming, and credentials server-side in a mostly C# sample |
 | Default execution | Deterministic simulated models and embeddings | Makes the demo reliable, free to run, and able to reproduce exact failure boundaries |
 | Live provider scope | OpenAI only, with a curated model catalog plus custom ID | Matches the initial concept without pretending model discovery or capability metadata is universal |
-| Core presets | Semantic route families, semantic over ordered chains, callback routing, cooldown failover, outer emergency fallback, and reasoning-level routing | Covers both composition directions: resilience inside selected families and fallback outside the selector |
+| Core presets | Semantic route families, semantic over ordered chains, direct cooldown failover, outer emergency fallback, and semantic reasoning-level routing | Covers both composition directions without exposing an opaque callback policy |
 | Exact attempt telemetry | Add a custom observable ordered policy derived from `FailoverChatClient` | `OrderedFailoverChatClient` is sealed and does not publish its protected attempt hook |
 | Model availability controls | Support fail-next, timed kill, down-until-revived, and revive | Enables repeatable comparison of static ordered failover and stateful cooldown behavior |
 | Initial cooldown policy | Fixed 30-second cooldown, half-open on the next request, and immediate error when every route is ineligible | Easy to explain and deterministic before adding production-style backoff rules |

@@ -50,6 +50,10 @@ The current prototype is deterministic and does not require an API key.
   failover chains.
 - Single-client families are constrained to exactly one model; adding another
   model automatically creates an ordered chain.
+- Direct selection is constrained to exactly one route family; adding another
+  family promotes the selector to semantic routing.
+- The reasoning preset semantically selects low, medium, or high reasoning
+  wrappers over the same model, with no failover between reasoning levels.
 - Optional whole-pipeline emergency fallback.
 - Per-route OpenAI model, reasoning, temperature, instruction, and token
   controls.
