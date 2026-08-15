@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Components;
+using Microsoft.JSInterop;
 using RoutingDemo.Web.Demo;
 
 namespace RoutingDemo.Web.Components.Pages;
@@ -74,6 +75,12 @@ public partial class Home
     private readonly CancellationTokenSource _lifetimeCancellation = new();
     private CancellationTokenSource? _requestCancellation;
     private Task? _clockTask;
+    private IJSObjectReference? _composerModule;
+    private DotNetObjectReference<Home>? _dotNetReference;
+    private bool _composerAttached;
+
+    [Inject]
+    private IJSRuntime JSRuntime { get; set; } = null!;
 
     private PipelineConfiguration Draft { get; set; } = new();
 
@@ -133,6 +140,30 @@ public partial class Home
     {
         SelectScenario("semantic-composition");
         _clockTask = RunClockAsync(_lifetimeCancellation.Token);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!IsBuilt)
+        {
+            _composerAttached = false;
+            return;
+        }
+
+        if (_composerAttached)
+        {
+            return;
+        }
+
+        _composerModule ??= await JSRuntime.InvokeAsync<IJSObjectReference>(
+            "import",
+            "./chat-composer.js");
+        _dotNetReference ??= DotNetObjectReference.Create(this);
+        await _composerModule.InvokeVoidAsync(
+            "attachComposer",
+            "chat-composer",
+            _dotNetReference);
+        _composerAttached = true;
     }
 
     private void GoHome()
@@ -513,6 +544,9 @@ public partial class Home
             _requestCancellation = null;
         }
     }
+
+    [JSInvokable]
+    public Task SendPromptFromKeyboardAsync() => SendAsync();
 
     private async Task RouteRequestAsync(
         string prompt,
@@ -1689,6 +1723,19 @@ public partial class Home
         }
 
         _requestCancellation?.Dispose();
+        if (_composerModule is not null)
+        {
+            try
+            {
+                await _composerModule.InvokeVoidAsync("detachComposer", "chat-composer");
+                await _composerModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+        }
+
+        _dotNetReference?.Dispose();
         _lifetimeCancellation.Dispose();
     }
 

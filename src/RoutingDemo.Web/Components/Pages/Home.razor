@@ -566,13 +566,14 @@
                 <footer class="composer">
                     <div class="composer-box">
                         <textarea rows="2"
+                                  id="chat-composer"
                                   placeholder="Message the routing pipeline..."
                                   aria-label="Chat message"
                                   disabled="@IsSending"
                                   @bind="Prompt"
                                   @bind:event="oninput"></textarea>
                         <div class="composer-footer">
-                            <span>Inspect semantic selection, inner attempts, and outer fallback.</span>
+                            <span>Enter to send · Shift+Enter for newline</span>
                             @if (IsSending)
                             {
                                 <button class="cancel-button" type="button" @onclick="CancelRequest">Cancel</button>
