@@ -59,6 +59,9 @@ The demo is intentionally deterministic and does not require an API key.
   semantic router still selects low, medium, or high reasoning on every turn.
 - Semantic profile utterances are edited from the selector that owns them,
   including both the sticky model profiles and each model’s reasoning profiles.
+- In the sticky preset, `simple`, `balanced`, and `complex` explicitly select
+  the outer model route; `low`, `medium`, and `high` explicitly select the
+  inner reasoning route. Configured profile order resolves keyword ties.
 - Optional whole-pipeline emergency fallback.
 - Per-route model ID, reasoning, temperature, instruction, and token controls.
 - Simulated streaming and non-streaming chat.

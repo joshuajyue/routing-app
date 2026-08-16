@@ -166,7 +166,7 @@
                                             <div class="semantic-profile-editor">
                                                 <div class="profile-editor-heading">
                                                     <strong>Owned profiles</strong>
-                                                    <small>Utterances used to select each child client.</small>
+                                                    <small>Demo keywords: @string.Join(", ", Draft.Families.Select(profile => profile.Name))</small>
                                                 </div>
                                                 @foreach (RouteFamilyDefinition profile in Draft.Families)
                                                 {
@@ -227,7 +227,7 @@
                                         <div class="semantic-profile-editor">
                                             <div class="profile-editor-heading">
                                                 <strong>Owned profiles</strong>
-                                                <small>Utterances used to select reasoning effort.</small>
+                                                <small>Demo keywords: @string.Join(", ", semanticRouter.Profiles.Select(profile => profile.Name))</small>
                                             </div>
                                             @foreach (RouteFamilyDefinition profile in semanticRouter.Profiles)
                                             {

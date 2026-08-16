@@ -789,7 +789,8 @@ public partial class Home
                 semanticRouter.ScoreThreshold,
                 prompt,
                 debug,
-                layer: family.Name);
+                layer: family.Name,
+                useDemoKeywords: configuration.SelectionPolicy == "StickySemantic");
             debug.SelectedInnerRoute = selectedProfile.Name;
             AddEvent(
                 debug,
@@ -1055,7 +1056,8 @@ public partial class Home
                 configuration.ScoreThreshold,
                 prompt,
                 debug,
-                layer: "outer");
+                layer: "outer",
+                useDemoKeywords: configuration.SelectionPolicy == "StickySemantic");
         }
 
         return configuration.Families[0];
@@ -1108,10 +1110,30 @@ public partial class Home
         double scoreThreshold,
         string prompt,
         RequestDebugState debug,
-        string layer)
+        string layer,
+        bool useDemoKeywords)
     {
-        List<RoutingScore> scores = ScoreFamilies(profiles, prompt, layer);
+        HashSet<string> queryTerms = Tokenize(prompt);
+        RouteFamilyDefinition? explicitProfile = useDemoKeywords
+            ? profiles.FirstOrDefault(profile =>
+                Tokenize(profile.Name).Any(queryTerms.Contains))
+            : null;
+        List<RoutingScore> scores = ScoreFamilies(
+            profiles,
+            queryTerms,
+            layer,
+            explicitProfile?.Id);
         debug.Scores.AddRange(scores);
+
+        if (explicitProfile is not null)
+        {
+            AddEvent(
+                debug,
+                "Selection",
+                "Demo keyword matched",
+                $"{layer}: '{explicitProfile.Name}' selected by explicit keyword. Configured profile order breaks ties.");
+            return explicitProfile;
+        }
 
         RoutingScore? winner = scores
             .Where(score => !profiles.First(profile => profile.Id == score.RouteFamilyId).IsDefault)
@@ -1139,14 +1161,25 @@ public partial class Home
 
     private static List<RoutingScore> ScoreFamilies(
         IReadOnlyList<RouteFamilyDefinition> profiles,
-        string prompt,
-        string layer)
+        HashSet<string> queryTerms,
+        string layer,
+        string? explicitProfileId)
     {
-        HashSet<string> queryTerms = Tokenize(prompt);
         var scores = new List<RoutingScore>();
 
         foreach (RouteFamilyDefinition family in profiles)
         {
+            if (family.Id == explicitProfileId)
+            {
+                scores.Add(new RoutingScore(
+                    layer,
+                    family.Id,
+                    family.Name,
+                    1,
+                    $"explicit: {family.Name}"));
+                continue;
+            }
+
             if (family.IsDefault)
             {
                 scores.Add(new RoutingScore(layer, family.Id, family.Name, 0, "Default family"));
@@ -1949,7 +1982,7 @@ public partial class Home
                 CreateSemanticModelFamily(
                     "balanced",
                     "Balanced tasks",
-                    "moderate task, explain a concept, compare options, make a plan, general analysis",
+                    "balanced task, moderate task, explain a concept, compare options, make a plan, general analysis",
                     "gpt-5.4",
                     isDefault: true),
                 CreateSemanticModelFamily(
@@ -1983,7 +2016,7 @@ public partial class Home
                     CreateFamily(
                         "low",
                         "Low reasoning",
-                        "brief answer, answer directly, minimal analysis, concise response, quick response",
+                        "low reasoning, brief answer, answer directly, minimal analysis, concise response, quick response",
                         "None",
                         [
                             CreateRoute(
@@ -1997,7 +2030,7 @@ public partial class Home
                     CreateFamily(
                         "medium",
                         "Medium reasoning",
-                        "explain reasoning, compare tradeoffs, step by step, balanced analysis, make a plan",
+                        "medium reasoning, explain reasoning, compare tradeoffs, step by step, balanced analysis, make a plan",
                         "None",
                         [
                             CreateRoute(
@@ -2012,7 +2045,7 @@ public partial class Home
                     CreateFamily(
                         "high",
                         "High reasoning",
-                        "reason deeply, verify assumptions, exhaustive analysis, difficult proof, careful multi-step reasoning",
+                        "high reasoning, reason deeply, verify assumptions, exhaustive analysis, difficult proof, careful multi-step reasoning",
                         "None",
                         [
                             CreateRoute(
