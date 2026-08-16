@@ -11,7 +11,7 @@ simulated clients. The simulator is the final execution model.
 | Initial host | .NET 10 Blazor Web App with Interactive Server rendering | Keeps the sample mostly C# and supports deterministic streaming UI updates |
 | Execution model | Deterministic simulated models and embeddings only | Makes the demo reliable, free to run, and able to reproduce exact failure boundaries |
 | Live provider integration | Out of scope | Real credentials and provider variability do not improve the routing concepts being demonstrated |
-| Core presets | Semantic route families, semantic over ordered chains, direct cooldown failover, outer emergency fallback, and semantic reasoning-level routing | Covers both composition directions without exposing an opaque callback policy |
+| Core presets | Semantic route families, sticky reasoning levels, direct cooldown failover, outer emergency fallback, and semantic reasoning-level routing | Covers composition, session stickiness, health memory, and option shaping without an opaque callback policy |
 | Exact attempt telemetry | Add a custom observable ordered policy derived from `FailoverChatClient` | `OrderedFailoverChatClient` is sealed and does not publish its protected attempt hook |
 | Model availability controls | Support fail-next, timed kill, down-until-revived, and revive | Enables repeatable comparison of static ordered failover and stateful cooldown behavior |
 | Initial cooldown policy | Fixed 30-second cooldown, half-open on the next request, and immediate error when every route is ineligible | Easy to explain and deterministic before adding production-style backoff rules |
@@ -24,7 +24,7 @@ simulated clients. The simulator is the final execution model.
 
 | Decision | Recommended default | Reason |
 | --- | --- | --- |
-| Sticky state store | In-memory implementation behind an `IDistributedCache`-compatible abstraction | Demonstrates the correct application-session model without requiring Redis |
+| Sticky state store | In-memory session-keyed cache for the deterministic demo | Demonstrates the correct application-session model without requiring external infrastructure |
 | Advanced custom policy | Extend cooldown selection with latency and TTFU ranking | Builds on the core cooldown policy instead of creating a disconnected preset |
 | Tool-calling scenario | Include one deterministic tool and compare router placement | Makes the pipeline-placement limitation concrete |
 | Advanced options | Add only options supported by model capability metadata | Avoids presenting invalid combinations such as temperature on an incompatible model |

@@ -25,7 +25,17 @@
         <div class="tree-branch root-branch">
             <div class="tree-subtree">
                 @RenderSelectorNode()
-                @RenderFamilies()
+                @if (IsStickySemantic)
+                {
+                    <div class="tree-branch sticky-classifier-branch">
+                        @RenderSemanticClassifierNode()
+                        @RenderFamilies()
+                    </div>
+                }
+                else
+                {
+                    @RenderFamilies()
+                }
             </div>
 
             <button class="@NodeClass(globalKey, "tree-node route global-fallback")"
@@ -46,7 +56,17 @@
     else
     {
         @RenderSelectorNode(isRoot: true)
-        @RenderFamilies()
+        @if (IsStickySemantic)
+        {
+            <div class="tree-branch sticky-classifier-branch">
+                @RenderSemanticClassifierNode()
+                @RenderFamilies()
+            </div>
+        }
+        else
+        {
+            @RenderFamilies()
+        }
     }
 </div>
 
@@ -64,6 +84,9 @@
     public string SelectedNodeKey { get; set; } = "selector";
 
     [Parameter]
+    public string? PinnedFamilyId { get; set; }
+
+    [Parameter]
     public EventCallback<string> SelectedNodeKeyChanged { get; set; }
 
     private RenderFragment RenderSelectorNode(bool isRoot = false) => builder =>
@@ -72,16 +95,19 @@
         string classes = NodeClass(key, $"tree-node selector {(isRoot ? "root" : null)}");
         string glyph = Configuration.SelectionPolicy switch
         {
+            "StickySemantic" => "ST",
             "Semantic" => "SR",
             _ => "DR",
         };
         string name = Configuration.SelectionPolicy switch
         {
+            "StickySemantic" => "StickySemanticRoutingChatClient",
             "Semantic" => "SemanticRoutingChatClient",
             _ => "Direct route",
         };
         string description = Configuration.SelectionPolicy switch
         {
+            "StickySemantic" => "Session ID cache / pin after completion",
             "Semantic" => $"Top {Configuration.TopK} / {Configuration.ScoreAggregation} / threshold {Configuration.ScoreThreshold:0.00}",
             _ => "One route family",
         };
@@ -109,6 +135,38 @@
         builder.OpenElement(16, "span");
         builder.AddAttribute(17, "class", "node-kind");
         builder.AddContent(18, "selector");
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    private RenderFragment RenderSemanticClassifierNode() => builder =>
+    {
+        const string key = "classifier";
+        builder.OpenElement(0, "button");
+        builder.AddAttribute(1, "class", NodeClass(key, "tree-node selector semantic-classifier"));
+        builder.AddAttribute(2, "type", "button");
+        builder.AddAttribute(3, "role", "treeitem");
+        builder.AddAttribute(4, "disabled", !Interactive);
+        builder.AddAttribute(5, "aria-pressed", SelectedNodeKey == key);
+        builder.AddAttribute(6, "onclick", EventCallback.Factory.Create(this, () => SelectNodeAsync(key)));
+        builder.OpenElement(7, "span");
+        builder.AddAttribute(8, "class", "node-glyph selector-glyph");
+        builder.AddContent(9, "SR");
+        builder.CloseElement();
+        builder.OpenElement(10, "span");
+        builder.AddAttribute(11, "class", "node-copy");
+        builder.OpenElement(12, "strong");
+        builder.AddContent(13, "SemanticRoutingChatClient");
+        builder.CloseElement();
+        builder.OpenElement(14, "small");
+        builder.AddContent(
+            15,
+            $"First unpinned turn / top {Configuration.TopK} / threshold {Configuration.ScoreThreshold:0.00}");
+        builder.CloseElement();
+        builder.CloseElement();
+        builder.OpenElement(16, "span");
+        builder.AddAttribute(17, "class", "node-kind");
+        builder.AddContent(18, "classifier");
         builder.CloseElement();
         builder.CloseElement();
     };
@@ -147,12 +205,19 @@
             builder.OpenElement(sequence++, "small");
             builder.AddContent(
                 sequence++,
-                Configuration.SelectionPolicy == "Semantic"
+                IsSemanticSelection
                     ? $"{family.Purpose} semantic profile"
                     : family.Purpose);
             builder.CloseElement();
             builder.CloseElement();
-            if (family.IsDefault)
+            if (family.Id == PinnedFamilyId)
+            {
+                builder.OpenElement(sequence++, "span");
+                builder.AddAttribute(sequence++, "class", "tree-tag pinned");
+                builder.AddContent(sequence++, "pinned");
+                builder.CloseElement();
+            }
+            else if (family.IsDefault)
             {
                 builder.OpenElement(sequence++, "span");
                 builder.AddAttribute(sequence++, "class", "tree-tag");
@@ -261,6 +326,11 @@
 
     private string NodeClass(string key, string classes) =>
         $"{classes} {(Interactive && SelectedNodeKey == key ? "selected" : null)}";
+
+    private bool IsStickySemantic => Configuration.SelectionPolicy == "StickySemantic";
+
+    private bool IsSemanticSelection =>
+        Configuration.SelectionPolicy is "Semantic" or "StickySemantic";
 
     private async Task SelectNodeAsync(string key)
     {

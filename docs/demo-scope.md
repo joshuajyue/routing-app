@@ -105,7 +105,7 @@ Starting scenarios are accelerators inside the first step:
 | Preset | Purpose |
 | --- | --- |
 | Semantic route families | Select coding, creative, and general family clients whose targets have independent resilience |
-| Semantic over ordered chains | Map every semantic profile to its own `OrderedFailoverChatClient` |
+| Sticky reasoning levels | Use `StickySemanticRoutingChatClient` to classify low/medium/high once and cache the selected family by application session ID |
 | Ordered failover | Walk a ranked list after deterministic pre-output failures |
 | Semantic plus outer fallback | Wrap the semantic router and a global emergency client in ordered failover |
 | Observable failover | Expose exact `FailoverChatClientAttempt` records from a custom `FailoverChatClient` |
@@ -350,6 +350,20 @@ should:
 - Reuse the pinned route on later turns.
 - Avoid pinning a failed or abandoned first response.
 - Allow clearing the pin independently of clearing chat history.
+
+The sticky reasoning preset renders this as:
+
+```text
+StickySemanticRoutingChatClient
+`-- SemanticRoutingChatClient   first unpinned turn only
+    |-- low    -> gpt-5.4-mini
+    |-- medium -> gpt-5.4       default
+    `-- high   -> gpt-5.5
+```
+
+Its profiles use broad task-complexity examples such as simple/routine,
+moderate/explanatory, and complex/multi-step. The selected family is cached
+only after a response completes successfully.
 
 ### Health-aware extension
 

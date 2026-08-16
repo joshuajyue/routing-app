@@ -19,12 +19,12 @@ public partial class Home
             "Semantic",
             "Per-family resilience"),
         new(
-            "semantic-ordered",
-            "Built-in composition",
-            "Semantic over ordered chains",
-            "Every semantic profile targets an OrderedFailoverChatClient containing category-compatible models.",
-            "Semantic",
-            "Ordered per profile"),
+            "sticky-reasoning",
+            "Session routing",
+            "Sticky reasoning levels",
+            "Classify the first successful turn as low, medium, or high, then pin that model for the session.",
+            "Sticky semantic",
+            "Session pin / low-medium-high"),
         new(
             "cooldown",
             "Custom policy",
@@ -52,7 +52,7 @@ public partial class Home
     [
         "gpt-5.5",
         "gpt-5.4",
-        "gpt-5-mini",
+        "gpt-5.4-mini",
         "gpt-4o-mini",
     ];
 
@@ -73,6 +73,7 @@ public partial class Home
     ];
 
     private readonly CancellationTokenSource _lifetimeCancellation = new();
+    private readonly Dictionary<string, string> _stickySelections = [];
     private CancellationTokenSource? _requestCancellation;
     private Task? _clockTask;
     private IJSObjectReference? _composerModule;
@@ -119,6 +120,18 @@ public partial class Home
             ? null
             : ResolveRouteLocation(ActiveConfiguration, ActiveSelectedNodeKey);
 
+    private string? StickyPinnedFamilyId =>
+        ActiveConfiguration is not null &&
+        ActiveConfiguration.SelectionPolicy == "StickySemantic" &&
+        _stickySelections.TryGetValue(SessionId, out string? familyId)
+            ? familyId
+            : null;
+
+    private RouteFamilyDefinition? StickyPinnedFamily =>
+        StickyPinnedFamilyId is { } familyId
+            ? ActiveConfiguration?.Families.FirstOrDefault(family => family.Id == familyId)
+            : null;
+
     private bool CanBuild =>
         HasValidTree() &&
         (!Draft.GlobalFallbackEnabled ||
@@ -131,7 +144,7 @@ public partial class Home
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Count() == Draft.AllRoutes().Count() &&
         (Draft.SelectionPolicy != "Direct" || Draft.Families.Count == 1) &&
-        (Draft.SelectionPolicy != "Semantic" ||
+        (!UsesSemanticSelection(Draft.SelectionPolicy) ||
          (Draft.Families.Count(family => family.IsDefault) == 1 &&
           Draft.Families.Where(family => !family.IsDefault)
               .All(family => !string.IsNullOrWhiteSpace(family.ProfileExamples))));
@@ -181,7 +194,7 @@ public partial class Home
     {
         Draft = scenarioId switch
         {
-            "semantic-ordered" => CreateSemanticOrderedScenario(),
+            "sticky-reasoning" => CreateStickyReasoningScenario(),
             "cooldown" => CreateCooldownScenario(),
             "reasoning" => CreateReasoningScenario(),
             _ => CreateSemanticCompositionScenario(),
@@ -197,7 +210,7 @@ public partial class Home
         }
 
         Draft.SelectionPolicy = policy;
-        if (policy == "Semantic" && Draft.Families.All(family => !family.IsDefault))
+        if (UsesSemanticSelection(policy) && Draft.Families.All(family => !family.IsDefault))
         {
             Draft.Families[^1].IsDefault = true;
         }
@@ -408,9 +421,14 @@ public partial class Home
             return "Selection";
         }
 
+        if (SelectedNodeKey == "classifier")
+        {
+            return "First-turn classifier";
+        }
+
         if (SelectedNodeKey.StartsWith("family:", StringComparison.Ordinal))
         {
-            return Draft.SelectionPolicy == "Semantic" ? "Semantic profile" : "Route family";
+            return UsesSemanticSelection(Draft.SelectionPolicy) ? "Semantic profile" : "Route family";
         }
 
         if (SelectedNodeKey.StartsWith("policy:", StringComparison.Ordinal))
@@ -438,6 +456,11 @@ public partial class Home
             return GetSelectorTypeName(Draft);
         }
 
+        if (SelectedNodeKey == "classifier")
+        {
+            return "SemanticRoutingChatClient";
+        }
+
         if (SelectedNodeKey.StartsWith("policy:", StringComparison.Ordinal) && SelectedFamily is { } policyFamily)
         {
             return policyFamily.ResiliencePolicy == "Cooldown"
@@ -452,6 +475,7 @@ public partial class Home
         configuration.SelectionPolicy switch
         {
             "Semantic" => "SemanticRoutingChatClient",
+            "StickySemantic" => "StickySemanticRoutingChatClient",
             _ => "Direct route selection",
         };
 
@@ -576,6 +600,11 @@ public partial class Home
 
         if (familyOutcome.Kind is InvocationOutcomeKind.Succeeded or InvocationOutcomeKind.Canceled)
         {
+            if (familyOutcome.Kind == InvocationOutcomeKind.Succeeded)
+            {
+                PinStickySelection(configuration, selectedFamily, debug);
+            }
+
             return;
         }
 
@@ -846,7 +875,27 @@ public partial class Home
         string prompt,
         RequestDebugState debug)
     {
-        if (configuration.SelectionPolicy == "Semantic")
+        if (configuration.SelectionPolicy == "StickySemantic")
+        {
+            if (_stickySelections.TryGetValue(SessionId, out string? pinnedFamilyId) &&
+                configuration.Families.FirstOrDefault(family => family.Id == pinnedFamilyId) is { } pinnedFamily)
+            {
+                AddEvent(
+                    debug,
+                    "Selection",
+                    "Sticky cache hit",
+                    $"Session key {SessionId} reused the pinned {pinnedFamily.Name} family.");
+                return pinnedFamily;
+            }
+
+            AddEvent(
+                debug,
+                "Selection",
+                "Sticky cache miss",
+                $"Session key {SessionId} has no pin; running first-turn semantic classification.");
+        }
+
+        if (UsesSemanticSelection(configuration.SelectionPolicy))
         {
             List<RoutingScore> scores = ScoreFamilies(configuration, prompt);
             debug.Scores.AddRange(scores);
@@ -879,6 +928,25 @@ public partial class Home
         }
 
         return configuration.Families[0];
+    }
+
+    private void PinStickySelection(
+        PipelineConfiguration configuration,
+        RouteFamilyDefinition selectedFamily,
+        RequestDebugState debug)
+    {
+        if (configuration.SelectionPolicy != "StickySemantic" ||
+            _stickySelections.ContainsKey(SessionId))
+        {
+            return;
+        }
+
+        _stickySelections[SessionId] = selectedFamily.Id;
+        AddEvent(
+            debug,
+            "Selection",
+            "Session route pinned",
+            $"Cached {selectedFamily.Name} under application session key {SessionId} after the response completed.");
     }
 
     private static bool HasNextFamilyCandidate(
@@ -1040,6 +1108,19 @@ public partial class Home
         CurrentDebug = null;
         Prompt = string.Empty;
         DebugTab = "Summary";
+    }
+
+    private void ClearStickyPin()
+    {
+        _stickySelections.Remove(SessionId);
+        if (CurrentDebug is not null)
+        {
+            AddEvent(
+                CurrentDebug,
+                "Selection",
+                "Sticky pin cleared",
+                $"Removed the cached route family for session key {SessionId}.");
+        }
     }
 
     private void ClearDebugEvents()
@@ -1261,7 +1342,7 @@ public partial class Home
     private static string GetScenarioMonogram(string scenarioId) => scenarioId switch
     {
         "semantic-composition" => "S+",
-        "semantic-ordered" => "SO",
+        "sticky-reasoning" => "ST",
         "cooldown" => "CD",
         _ => "R2",
     };
@@ -1270,6 +1351,9 @@ public partial class Home
         string.IsNullOrWhiteSpace(value)
             ? value
             : char.ToUpperInvariant(value[0]) + value[1..];
+
+    private static bool UsesSemanticSelection(string policy) =>
+        policy is "Semantic" or "StickySemantic";
 
     private static string FormatBoolean(bool value) => value ? "True" : "False";
 
@@ -1326,9 +1410,12 @@ public partial class Home
 
     private static string GetCompositionLabel(PipelineConfiguration configuration)
     {
-        string inner = configuration.SelectionPolicy == "Semantic"
-            ? "Semantic families"
-            : "Direct family";
+        string inner = configuration.SelectionPolicy switch
+        {
+            "StickySemantic" => "Sticky semantic families",
+            "Semantic" => "Semantic families",
+            _ => "Direct family",
+        };
         return configuration.GlobalFallbackEnabled ? $"Outer failover / {inner}" : inner;
     }
 
@@ -1423,9 +1510,11 @@ public partial class Home
         }
 
         string selectorVariable;
-        if (configuration.SelectionPolicy == "Semantic")
+        if (UsesSemanticSelection(configuration.SelectionPolicy))
         {
-            builder.AppendLine("using var selector = new SemanticRoutingChatClient(");
+            builder.AppendLine(configuration.SelectionPolicy == "StickySemantic"
+                ? "using var selector = new StickySemanticRoutingChatClient("
+                : "using var selector = new SemanticRoutingChatClient(");
             builder.AppendLine("    embeddings,");
             builder.AppendLine("    new Dictionary<IChatClient, IReadOnlyList<string>>");
             builder.AppendLine("    {");
@@ -1440,7 +1529,17 @@ public partial class Home
                 configuration.Families[^1];
             builder.AppendLine($"    defaultClient: {ToVariableName(defaultFamily.Name)}Route,");
             builder.AppendLine($"    scoreThreshold: {configuration.ScoreThreshold:0.00}f,");
-            builder.AppendLine($"    topK: {configuration.TopK});");
+            if (configuration.SelectionPolicy == "StickySemantic")
+            {
+                builder.AppendLine($"    topK: {configuration.TopK},");
+                builder.AppendLine("    cache,");
+                builder.AppendLine("    sessionIdPropertyName: \"routing-session-id\");");
+            }
+            else
+            {
+                builder.AppendLine($"    topK: {configuration.TopK});");
+            }
+
             selectorVariable = "selector";
         }
         else
@@ -1530,7 +1629,7 @@ public partial class Home
                         CreateRoute(
                             "creative-backup",
                             "Backup creative model",
-                            "gpt-5-mini",
+                            "gpt-5.4-mini",
                             "low",
                             0.7,
                             "You are a quick creative fallback."),
@@ -1561,12 +1660,12 @@ public partial class Home
                 "Provide a concise response when the selected route family is unavailable."),
         };
 
-    private static PipelineConfiguration CreateSemanticOrderedScenario() =>
+    private static PipelineConfiguration CreateStickyReasoningScenario() =>
         new()
         {
-            ScenarioId = "semantic-ordered",
-            ScenarioName = "Semantic over ordered chains",
-            SelectionPolicy = "Semantic",
+            ScenarioId = "sticky-reasoning",
+            ScenarioName = "Sticky reasoning levels",
+            SelectionPolicy = "StickySemantic",
             ScoreThreshold = 0.35,
             TopK = 3,
             ScoreAggregation = "Mean",
@@ -1574,33 +1673,48 @@ public partial class Home
             Families =
             [
                 CreateFamily(
-                    "coding",
-                    "Programming",
-                    "code, bug, refactor, function, csharp, api",
-                    "Ordered",
+                    "low",
+                    "Low reasoning",
+                    "simple task, quick answer, short summary, rewrite, routine request, straightforward question",
+                    "None",
                     [
-                        CreateRoute("coding-primary", "Primary", "gpt-5.5", "high", 0.2, "Handle difficult coding work."),
-                        CreateRoute("coding-backup", "Backup", "gpt-5.4", "medium", 0.2, "Back up coding requests."),
+                        CreateRoute(
+                            "low-reasoning",
+                            "Low reasoning model",
+                            "gpt-5.4-mini",
+                            "low",
+                            0.2,
+                            "Handle simple and routine tasks efficiently."),
                     ]),
                 CreateFamily(
-                    "writing",
-                    "Writing",
-                    "write, poem, story, announcement, brainstorm",
-                    "Ordered",
+                    "medium",
+                    "Medium reasoning",
+                    "moderate task, explain a concept, compare options, make a plan, general analysis",
+                    "None",
                     [
-                        CreateRoute("writing-primary", "Primary", "gpt-5.4", "low", 0.8, "Handle creative writing."),
-                        CreateRoute("writing-backup", "Backup", "gpt-5-mini", "low", 0.7, "Back up creative requests."),
-                    ]),
-                CreateFamily(
-                    "general",
-                    "Default",
-                    "general questions, everyday help",
-                    "Ordered",
-                    [
-                        CreateRoute("general-primary", "Primary", "gpt-5-mini", "low", 0.3, "Handle general requests."),
-                        CreateRoute("general-backup", "Backup", "gpt-4o-mini", "low", 0.3, "Back up general requests."),
+                        CreateRoute(
+                            "medium-reasoning",
+                            "Medium reasoning model",
+                            "gpt-5.4",
+                            "medium",
+                            0.2,
+                            "Use balanced reasoning for moderately complex tasks."),
                     ],
                     isDefault: true),
+                CreateFamily(
+                    "high",
+                    "High reasoning",
+                    "complex task, difficult debugging, architecture design, deep analysis, multi-step problem, hard problem",
+                    "None",
+                    [
+                        CreateRoute(
+                            "high-reasoning",
+                            "High reasoning model",
+                            "gpt-5.5",
+                            "high",
+                            0.2,
+                            "Reason carefully through complex multi-step tasks."),
+                    ]),
             ],
         };
 

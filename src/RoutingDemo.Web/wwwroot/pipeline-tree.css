@@ -117,6 +117,11 @@
     color: var(--accent-dark);
 }
 
+.pipeline-tree .tree-tag.pinned {
+    background: var(--success-soft);
+    color: var(--success);
+}
+
 .pipeline-tree .tree-branch {
     position: relative;
     display: flex;

@@ -1092,6 +1092,37 @@ input[type="range"]::-webkit-slider-thumb {
     font-weight: 650;
 }
 
+.sticky-config-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 4px 12px;
+    border: 1px solid #d8d8fa;
+    border-radius: 10px;
+    background: #fbfbff;
+    padding: 12px;
+}
+
+.sticky-config-row > span {
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 650;
+}
+
+.sticky-config-row code {
+    justify-self: end;
+    color: var(--accent-dark);
+    font-family: "Cascadia Code", Consolas, monospace;
+    font-size: 10px;
+    font-weight: 650;
+}
+
+.sticky-config-row small {
+    grid-column: 1 / -1;
+    color: var(--text-muted);
+    font-size: 9px;
+}
+
 .inspector-temperature {
     padding: 2px 0;
 }
@@ -1758,6 +1789,51 @@ input[type="range"]::-webkit-slider-thumb {
 
 .selected-health-section {
     flex: 0 0 auto;
+}
+
+.sticky-session-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 7px 12px;
+    margin-top: 16px;
+    border: 1px solid #d8d8fa;
+    border-radius: 11px;
+    background: #fbfbff;
+    padding: 12px;
+}
+
+.sticky-session-card > .eyebrow {
+    grid-column: 1 / -1;
+}
+
+.sticky-session-card > div {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+}
+
+.sticky-session-card strong {
+    font-size: 11px;
+}
+
+.sticky-session-card small {
+    overflow: hidden;
+    margin-top: 2px;
+    color: var(--text-muted);
+    font-size: 8px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sticky-session-card button {
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--surface);
+    padding: 6px 9px;
+    color: var(--text-muted);
+    font-size: 8px;
+    font-weight: 650;
 }
 
 .selected-health-card {

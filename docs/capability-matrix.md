@@ -93,7 +93,7 @@ verified outside the main interaction.
 | Inner versus outer failure scope | Exhaust a selected family, then invoke a global emergency client outside the semantic router | Nested attempt and event timelines | P0 |
 | Route-level configured wrappers | Different instructions/options per route | Options diff | P0 |
 | One model at multiple reasoning levels | Semantic low/medium/high single-client families over one simulated model ID | Distinct routes and effective options | P0 |
-| Sticky application-session routing | Pin only after successful completion | Cache/pin events | P1 |
+| Sticky application-session routing | Classify low/medium/high on the first successful turn, cache by application session ID, reuse the pin, and clear it independently | Nested sticky/semantic tree and cache events | P0 |
 | One-shot manual failure | Select a model leaf in the runtime tree and fail its next invocation | Selected-model health and invocation trace | P0 |
 | Timed manual kill | Select a model leaf and keep it down with a visible expiry countdown | Tree status, selected-model health, and attempt trace | P0 |
 | Until-revived manual kill | Select a model leaf and keep it down for the demo session | Tree status and selected-model health | P0 |
