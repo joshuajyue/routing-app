@@ -186,7 +186,7 @@
             builder.AddContent(sequence++, "pinned");
             builder.CloseElement();
         }
-        else if (family.IsDefault)
+        else if (family.IsDefault && !nested)
         {
             builder.OpenElement(sequence++, "span");
             builder.AddAttribute(sequence++, "class", "tree-tag");

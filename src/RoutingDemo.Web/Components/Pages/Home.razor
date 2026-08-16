@@ -238,10 +238,6 @@
                                                                checked="@profile.IsDefault"
                                                                @onchange="() => MakeDefault(profile)" />
                                                         <strong>@profile.Name</strong>
-                                                        @if (profile.IsDefault)
-                                                        {
-                                                            <small>default</small>
-                                                        }
                                                     </span>
                                                     <textarea rows="2" @bind="profile.ProfileExamples"></textarea>
                                                 </label>
