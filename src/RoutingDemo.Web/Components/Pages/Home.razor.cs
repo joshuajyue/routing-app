@@ -21,10 +21,10 @@ public partial class Home
         new(
             "sticky-reasoning",
             "Session routing",
-            "Sticky reasoning levels",
-            "Classify the first successful turn as low, medium, or high, then pin that model for the session.",
+            "Sticky model + reasoning",
+            "Pin a broad model family for the session, then semantically choose that model's reasoning effort per turn.",
             "Sticky semantic",
-            "Session pin / low-medium-high"),
+            "Model pin / per-turn reasoning"),
         new(
             "cooldown",
             "Custom policy",
@@ -110,6 +110,10 @@ public partial class Home
     private bool DebugSidebarVisible { get; set; } = true;
 
     private RouteFamilyDefinition? SelectedFamily => ResolveSelectedFamily();
+
+    private RouteFamilyDefinition? SelectedInnerFamily => ResolveSelectedInnerFamily();
+
+    private SemanticRouterDefinition? SelectedSemanticRouter => ResolveSelectedSemanticRouter();
 
     private RouteFamilyDefinition? SelectedRouteFamily => ResolveSelectedRouteFamily();
 
@@ -228,61 +232,96 @@ public partial class Home
         }
 
         int familyNumber = Draft.Families.Count + 1;
-        var family = CreateFamily(
-            $"family-{familyNumber}",
-            "Custom route family",
-            "custom requests, specialized help",
-            "None",
-            [
-                CreateRoute(
-                    $"family-{familyNumber}-primary",
-                    "Primary",
-                    "gpt-5.4",
-                    "medium",
-                    0.3,
-                    "Be concise and helpful."),
-            ]);
+        RouteFamilyDefinition family = Draft.SelectionPolicy == "StickySemantic"
+            ? CreateSemanticModelFamily(
+                $"model-{familyNumber}",
+                "Custom model tasks",
+                "custom task, specialized request",
+                "gpt-5.4")
+            : CreateFamily(
+                $"family-{familyNumber}",
+                "Custom route family",
+                "custom requests, specialized help",
+                "None",
+                [
+                    CreateRoute(
+                        $"family-{familyNumber}-primary",
+                        "Primary",
+                        "gpt-5.4",
+                        "medium",
+                        0.3,
+                        "Be concise and helpful."),
+                ]);
         Draft.Families.Add(family);
-        SelectedNodeKey = $"family:{family.Id}";
+        SelectedNodeKey = family.SemanticRouter is null
+            ? $"family:{family.Id}"
+            : $"semantic:{family.Id}";
     }
 
     private void RemoveFamily(RouteFamilyDefinition family)
     {
-        if (Draft.Families.Count <= 1)
+        List<RouteFamilyDefinition> owner = GetFamilyOwner(family);
+        if (owner.Count <= 1)
         {
             return;
         }
 
         bool removedDefault = family.IsDefault;
-        Draft.Families.Remove(family);
+        owner.Remove(family);
         if (removedDefault)
         {
-            Draft.Families[^1].IsDefault = true;
+            owner[^1].IsDefault = true;
         }
 
-        SelectedNodeKey = $"family:{Draft.Families[0].Id}";
+        SelectedNodeKey = GetFamilyNodeKey(owner[0]);
     }
 
     private void MoveFamily(RouteFamilyDefinition family, int offset)
     {
-        int index = Draft.Families.IndexOf(family);
+        List<RouteFamilyDefinition> owner = GetFamilyOwner(family);
+        int index = owner.IndexOf(family);
         int target = index + offset;
-        if (index < 0 || target < 0 || target >= Draft.Families.Count)
+        if (index < 0 || target < 0 || target >= owner.Count)
         {
             return;
         }
 
-        Draft.Families.RemoveAt(index);
-        Draft.Families.Insert(target, family);
+        owner.RemoveAt(index);
+        owner.Insert(target, family);
     }
 
     private void MakeDefault(RouteFamilyDefinition family)
     {
-        foreach (RouteFamilyDefinition candidate in Draft.Families)
+        foreach (RouteFamilyDefinition candidate in GetFamilyOwner(family))
         {
             candidate.IsDefault = ReferenceEquals(candidate, family);
         }
     }
+
+    private void AddSemanticProfile(RouteFamilyDefinition outerFamily)
+    {
+        SemanticRouterDefinition router = outerFamily.SemanticRouter!;
+        int profileNumber = router.Profiles.Count + 1;
+        var profile = CreateFamily(
+            $"profile-{profileNumber}",
+            "Reasoning profile",
+            "example request",
+            "None",
+            [
+                CreateRoute(
+                    $"{outerFamily.Name}-profile-{profileNumber}",
+                    "Reasoning configuration",
+                    outerFamily.AllRoutes().First().ModelId,
+                    "medium",
+                    0.2,
+                    "Handle requests matching this reasoning profile."),
+            ]);
+        router.Profiles.Add(profile);
+        SelectedNodeKey = $"subfamily:{outerFamily.Id}:{profile.Id}";
+    }
+
+    private void SelectSemanticRouter(RouteFamilyDefinition family) =>
+        SelectedNodeKey = $"semantic:{family.Id}";
 
     private void EnsureSemanticDefault()
     {
@@ -326,7 +365,7 @@ public partial class Home
         }
 
         family.MaximumAttempts = Math.Max(family.MaximumAttempts, family.Routes.Count);
-        SelectedNodeKey = $"route:{family.Id}:{route.Id}";
+        SelectedNodeKey = GetRouteNodeKey(family, route);
     }
 
     private void RemoveRoute(RouteFamilyDefinition family, RouteDefinition route)
@@ -344,7 +383,7 @@ public partial class Home
             family.MaximumAttempts = 1;
         }
 
-        SelectedNodeKey = $"route:{family.Id}:{family.Routes[0].Id}";
+        SelectedNodeKey = GetRouteNodeKey(family, family.Routes[0]);
     }
 
     private void MoveRoute(RouteFamilyDefinition family, RouteDefinition route, int offset)
@@ -360,10 +399,10 @@ public partial class Home
         family.Routes.Insert(target, route);
     }
 
-    private bool IsFirstFamily(RouteFamilyDefinition family) => Draft.Families.IndexOf(family) == 0;
+    private bool IsFirstFamily(RouteFamilyDefinition family) => GetFamilyOwner(family).IndexOf(family) == 0;
 
     private bool IsLastFamily(RouteFamilyDefinition family) =>
-        Draft.Families.IndexOf(family) == Draft.Families.Count - 1;
+        GetFamilyOwner(family).IndexOf(family) == GetFamilyOwner(family).Count - 1;
 
     private static bool IsFirstRoute(RouteFamilyDefinition family, RouteDefinition route) =>
         family.Routes.IndexOf(route) == 0;
@@ -371,12 +410,50 @@ public partial class Home
     private static bool IsLastRoute(RouteFamilyDefinition family, RouteDefinition route) =>
         family.Routes.IndexOf(route) == family.Routes.Count - 1;
 
+    private List<RouteFamilyDefinition> GetFamilyOwner(RouteFamilyDefinition family)
+    {
+        foreach (RouteFamilyDefinition outerFamily in Draft.Families)
+        {
+            if (outerFamily.SemanticRouter?.Profiles.Contains(family) == true)
+            {
+                return outerFamily.SemanticRouter.Profiles;
+            }
+        }
+
+        return Draft.Families;
+    }
+
+    private string GetFamilyNodeKey(RouteFamilyDefinition family)
+    {
+        foreach (RouteFamilyDefinition outerFamily in Draft.Families)
+        {
+            if (outerFamily.SemanticRouter?.Profiles.Contains(family) == true)
+            {
+                return $"subfamily:{outerFamily.Id}:{family.Id}";
+            }
+        }
+
+        return $"family:{family.Id}";
+    }
+
+    private string GetRouteNodeKey(RouteFamilyDefinition family, RouteDefinition route)
+    {
+        RouteFamilyDefinition? outerFamily = GetOuterFamilyForInnerProfile(family);
+        return outerFamily is null
+            ? $"route:{family.Id}:{route.Id}"
+            : $"subroute:{outerFamily.Id}:{family.Id}:{route.Id}";
+    }
+
+    private RouteFamilyDefinition? GetOuterFamilyForInnerProfile(RouteFamilyDefinition family) =>
+        Draft.Families.FirstOrDefault(
+            outerFamily => outerFamily.SemanticRouter?.Profiles.Contains(family) == true);
+
     private RouteFamilyDefinition? ResolveSelectedFamily()
     {
         string[] parts = SelectedNodeKey.Split(':');
         string? familyId = parts.Length switch
         {
-            >= 2 when parts[0] is "family" or "policy" => parts[1],
+            >= 2 when parts[0] is "family" or "policy" or "semantic" => parts[1],
             >= 3 when parts[0] == "route" => parts[1],
             _ => null,
         };
@@ -386,10 +463,35 @@ public partial class Home
             : Draft.Families.FirstOrDefault(family => family.Id == familyId);
     }
 
-    private RouteFamilyDefinition? ResolveSelectedRouteFamily() =>
-        SelectedNodeKey.StartsWith("route:", StringComparison.Ordinal)
-            ? ResolveSelectedFamily()
+    private SemanticRouterDefinition? ResolveSelectedSemanticRouter() =>
+        SelectedNodeKey.StartsWith("semantic:", StringComparison.Ordinal)
+            ? ResolveSelectedFamily()?.SemanticRouter
             : null;
+
+    private RouteFamilyDefinition? ResolveSelectedInnerFamily()
+    {
+        string[] parts = SelectedNodeKey.Split(':');
+        if (parts.Length < 3 ||
+            parts[0] is not ("subfamily" or "subpolicy") &&
+            !(parts.Length >= 4 && parts[0] == "subroute"))
+        {
+            return null;
+        }
+
+        string outerFamilyId = parts[1];
+        string innerFamilyId = parts[2];
+        return Draft.Families
+            .FirstOrDefault(family => family.Id == outerFamilyId)
+            ?.SemanticRouter?.Profiles
+            .FirstOrDefault(profile => profile.Id == innerFamilyId);
+    }
+
+    private RouteFamilyDefinition? ResolveSelectedRouteFamily() =>
+        SelectedNodeKey.StartsWith("subroute:", StringComparison.Ordinal)
+            ? ResolveSelectedInnerFamily()
+            : SelectedNodeKey.StartsWith("route:", StringComparison.Ordinal)
+                ? ResolveSelectedFamily()
+                : null;
 
     private RouteDefinition? ResolveSelectedRoute()
     {
@@ -404,6 +506,15 @@ public partial class Home
             return Draft.Families
                 .FirstOrDefault(family => family.Id == parts[1])
                 ?.Routes.FirstOrDefault(route => route.Id == parts[2]);
+        }
+
+        if (parts.Length >= 4 && parts[0] == "subroute")
+        {
+            return Draft.Families
+                .FirstOrDefault(family => family.Id == parts[1])
+                ?.SemanticRouter?.Profiles
+                .FirstOrDefault(profile => profile.Id == parts[2])
+                ?.Routes.FirstOrDefault(route => route.Id == parts[3]);
         }
 
         return null;
@@ -421,17 +532,23 @@ public partial class Home
             return "Selection";
         }
 
-        if (SelectedNodeKey == "classifier")
-        {
-            return "First-turn classifier";
-        }
-
         if (SelectedNodeKey.StartsWith("family:", StringComparison.Ordinal))
         {
             return UsesSemanticSelection(Draft.SelectionPolicy) ? "Semantic profile" : "Route family";
         }
 
-        if (SelectedNodeKey.StartsWith("policy:", StringComparison.Ordinal))
+        if (SelectedNodeKey.StartsWith("semantic:", StringComparison.Ordinal))
+        {
+            return "Nested selection";
+        }
+
+        if (SelectedNodeKey.StartsWith("subfamily:", StringComparison.Ordinal))
+        {
+            return "Reasoning profile";
+        }
+
+        if (SelectedNodeKey.StartsWith("policy:", StringComparison.Ordinal) ||
+            SelectedNodeKey.StartsWith("subpolicy:", StringComparison.Ordinal))
         {
             return "Family resilience";
         }
@@ -456,19 +573,28 @@ public partial class Home
             return GetSelectorTypeName(Draft);
         }
 
-        if (SelectedNodeKey == "classifier")
+        if (SelectedSemanticRouter is { } semanticRouter)
         {
-            return "SemanticRoutingChatClient";
+            return semanticRouter.Name;
         }
 
-        if (SelectedNodeKey.StartsWith("policy:", StringComparison.Ordinal) && SelectedFamily is { } policyFamily)
+        RouteFamilyDefinition? selectedPolicyFamily =
+            SelectedNodeKey.StartsWith("subpolicy:", StringComparison.Ordinal)
+                ? SelectedInnerFamily
+                : SelectedFamily;
+        if ((SelectedNodeKey.StartsWith("policy:", StringComparison.Ordinal) ||
+             SelectedNodeKey.StartsWith("subpolicy:", StringComparison.Ordinal)) &&
+            selectedPolicyFamily is { } policyFamily)
         {
             return policyFamily.ResiliencePolicy == "Cooldown"
                 ? "CooldownFailoverChatClient"
                 : "OrderedFailoverChatClient";
         }
 
-        return SelectedRoute?.Name ?? SelectedFamily?.Name ?? "Pipeline node";
+        return SelectedRoute?.Name ??
+               SelectedInnerFamily?.Name ??
+               SelectedFamily?.Name ??
+               "Pipeline node";
     }
 
     private static string GetSelectorTypeName(PipelineConfiguration configuration) =>
@@ -581,8 +707,12 @@ public partial class Home
         RouteFamilyDefinition selectedFamily = SelectRouteFamily(configuration, prompt, debug);
         debug.SelectedFamilyId = selectedFamily.Id;
         debug.SelectedRoute = selectedFamily.Name;
-        debug.ResiliencePolicy = GetResilienceDisplayName(selectedFamily.ResiliencePolicy);
-        debug.ConfiguredModel = selectedFamily.Routes[0].ModelId;
+        debug.ResiliencePolicy = selectedFamily.SemanticRouter is null
+            ? GetResilienceDisplayName(selectedFamily.ResiliencePolicy)
+            : "Nested semantic";
+        debug.ConfiguredModel = selectedFamily.SemanticRouter is null
+            ? selectedFamily.Routes[0].ModelId
+            : selectedFamily.Name;
         AddEvent(
             debug,
             "Selection",
@@ -652,6 +782,29 @@ public partial class Home
         RequestExecutionContext execution,
         CancellationToken cancellationToken)
     {
+        if (family.SemanticRouter is { } semanticRouter)
+        {
+            RouteFamilyDefinition selectedProfile = SelectSemanticProfile(
+                semanticRouter.Profiles,
+                semanticRouter.ScoreThreshold,
+                prompt,
+                debug,
+                layer: family.Name);
+            debug.SelectedInnerRoute = selectedProfile.Name;
+            AddEvent(
+                debug,
+                "Selection",
+                "Inner semantic profile selected",
+                $"{family.Name} selected {selectedProfile.Name} reasoning for this turn.");
+            return await ExecuteFamilyAsync(
+                configuration,
+                selectedProfile,
+                prompt,
+                debug,
+                execution,
+                cancellationToken);
+        }
+
         IReadOnlyList<RouteDefinition> candidates = family.ResiliencePolicy == "None"
             ? family.Routes.Take(1).ToArray()
             : family.Routes;
@@ -897,34 +1050,12 @@ public partial class Home
 
         if (UsesSemanticSelection(configuration.SelectionPolicy))
         {
-            List<RoutingScore> scores = ScoreFamilies(configuration, prompt);
-            debug.Scores.AddRange(scores);
-
-            RoutingScore? winner = scores
-                .Where(score => !configuration.Families
-                    .First(family => family.Id == score.RouteFamilyId)
-                    .IsDefault)
-                .OrderByDescending(score => score.Score)
-                .FirstOrDefault();
-
-            if (winner is not null && winner.Score >= configuration.ScoreThreshold)
-            {
-                AddEvent(
-                    debug,
-                    "Selection",
-                    "Semantic threshold cleared",
-                    $"{winner.RouteFamilyName} scored {winner.Score:0.00}.");
-                return configuration.Families.First(family => family.Id == winner.RouteFamilyId);
-            }
-
-            RouteFamilyDefinition fallback = configuration.Families.FirstOrDefault(family => family.IsDefault) ??
-                                             configuration.Families[^1];
-            AddEvent(
+            return SelectSemanticProfile(
+                configuration.Families,
+                configuration.ScoreThreshold,
+                prompt,
                 debug,
-                "Selection",
-                "Default family selected",
-                $"No profile cleared {configuration.ScoreThreshold:0.00}; using {fallback.Name}.");
-            return fallback;
+                layer: "outer");
         }
 
         return configuration.Families[0];
@@ -972,18 +1103,53 @@ public partial class Home
         return false;
     }
 
+    private RouteFamilyDefinition SelectSemanticProfile(
+        IReadOnlyList<RouteFamilyDefinition> profiles,
+        double scoreThreshold,
+        string prompt,
+        RequestDebugState debug,
+        string layer)
+    {
+        List<RoutingScore> scores = ScoreFamilies(profiles, prompt, layer);
+        debug.Scores.AddRange(scores);
+
+        RoutingScore? winner = scores
+            .Where(score => !profiles.First(profile => profile.Id == score.RouteFamilyId).IsDefault)
+            .OrderByDescending(score => score.Score)
+            .FirstOrDefault();
+
+        if (winner is not null && winner.Score >= scoreThreshold)
+        {
+            AddEvent(
+                debug,
+                "Selection",
+                "Semantic threshold cleared",
+                $"{layer}: {winner.RouteFamilyName} scored {winner.Score:0.00}.");
+            return profiles.First(profile => profile.Id == winner.RouteFamilyId);
+        }
+
+        RouteFamilyDefinition fallback = profiles.FirstOrDefault(profile => profile.IsDefault) ?? profiles[^1];
+        AddEvent(
+            debug,
+            "Selection",
+            "Default family selected",
+            $"{layer}: no profile cleared {scoreThreshold:0.00}; using {fallback.Name}.");
+        return fallback;
+    }
+
     private static List<RoutingScore> ScoreFamilies(
-        PipelineConfiguration configuration,
-        string prompt)
+        IReadOnlyList<RouteFamilyDefinition> profiles,
+        string prompt,
+        string layer)
     {
         HashSet<string> queryTerms = Tokenize(prompt);
         var scores = new List<RoutingScore>();
 
-        foreach (RouteFamilyDefinition family in configuration.Families)
+        foreach (RouteFamilyDefinition family in profiles)
         {
             if (family.IsDefault)
             {
-                scores.Add(new RoutingScore(family.Id, family.Name, 0, "Default family"));
+                scores.Add(new RoutingScore(layer, family.Id, family.Name, 0, "Default family"));
                 continue;
             }
 
@@ -996,6 +1162,7 @@ public partial class Home
                 ? 0.08
                 : Math.Min(0.96, 0.18 + (matches.Length * 0.22));
             scores.Add(new RoutingScore(
+                layer,
                 family.Id,
                 family.Name,
                 score,
@@ -1273,10 +1440,10 @@ public partial class Home
         string layer,
         string prompt)
     {
-        if (route.Name.EndsWith("-reasoning", StringComparison.Ordinal))
+        if (route.Purpose.EndsWith("reasoning", StringComparison.Ordinal))
         {
             return $"{route.Name} handled this request on {route.ModelId} with {route.ReasoningEffort} reasoning. " +
-                   "Semantic routing selected the reasoning-effort wrapper directly; no failover chain sits between reasoning levels.";
+                   "The sticky selector chose the model family, then that family's semantic router selected reasoning effort for this turn.";
         }
 
         if (ContainsAny(prompt, "code", "c#", "bug", "refactor", "function", "service"))
@@ -1360,20 +1527,42 @@ public partial class Home
     private bool HasValidTree() =>
         Draft.Families.Count >= 1 &&
         (Draft.SelectionPolicy != "Direct" || Draft.Families.Count == 1) &&
-        Draft.Families.All(family =>
-            !string.IsNullOrWhiteSpace(family.Name) &&
-            family.Routes.Count >= 1 &&
-            (family.ResiliencePolicy != "None" || family.Routes.Count == 1) &&
-            family.Routes.All(route =>
-                !string.IsNullOrWhiteSpace(route.Name) &&
-                !string.IsNullOrWhiteSpace(route.ModelId)));
+        Draft.Families.All(IsValidFamily);
+
+    private static bool IsValidFamily(RouteFamilyDefinition family)
+    {
+        if (string.IsNullOrWhiteSpace(family.Name))
+        {
+            return false;
+        }
+
+        if (family.SemanticRouter is { } semanticRouter)
+        {
+            return semanticRouter.Profiles.Count >= 1 &&
+                   semanticRouter.Profiles.Count(profile => profile.IsDefault) == 1 &&
+                   semanticRouter.Profiles.All(profile =>
+                       !string.IsNullOrWhiteSpace(profile.ProfileExamples) &&
+                       IsValidFamily(profile));
+        }
+
+        return family.Routes.Count >= 1 &&
+               (family.ResiliencePolicy != "None" || family.Routes.Count == 1) &&
+               family.Routes.All(route =>
+                   !string.IsNullOrWhiteSpace(route.Name) &&
+                   !string.IsNullOrWhiteSpace(route.ModelId));
+    }
 
     private List<string> GetWarnings()
     {
         var warnings = new List<string>();
 
-        foreach (RouteFamilyDefinition family in Draft.Families)
+        foreach (RouteFamilyDefinition family in Draft.Families.SelectMany(FlattenFamilies))
         {
+            if (family.SemanticRouter is not null)
+            {
+                continue;
+            }
+
             if (family.ResiliencePolicy == "None" && family.Routes.Count > 1)
             {
                 warnings.Add($"{family.Name} must remove backup clients or select an ordered/cooldown resilience policy.");
@@ -1421,10 +1610,26 @@ public partial class Home
 
     private static string GetFamilyTargetType(RouteFamilyDefinition family) => family.ResiliencePolicy switch
     {
+        _ when family.SemanticRouter is not null => "SemanticRoutingChatClient",
         "Ordered" => "OrderedFailoverChatClient",
         "Cooldown" => "CooldownFailoverChatClient",
         _ => "configured IChatClient",
     };
+
+    private static IEnumerable<RouteFamilyDefinition> FlattenFamilies(RouteFamilyDefinition family)
+    {
+        yield return family;
+        if (family.SemanticRouter is not null)
+        {
+            foreach (RouteFamilyDefinition profile in family.SemanticRouter.Profiles)
+            {
+                foreach (RouteFamilyDefinition descendant in FlattenFamilies(profile))
+                {
+                    yield return descendant;
+                }
+            }
+        }
+    }
 
     private static string GetResilienceDisplayName(string policy) =>
         policy == "None" ? "Single" : policy;
@@ -1432,6 +1637,12 @@ public partial class Home
     private static string GetInitialActiveNodeKey(PipelineConfiguration configuration)
     {
         RouteFamilyDefinition family = configuration.Families[0];
+        if (family.SemanticRouter is { Profiles.Count: > 0 } semanticRouter)
+        {
+            RouteFamilyDefinition profile = semanticRouter.Profiles[0];
+            return $"subroute:{family.Id}:{profile.Id}:{profile.Routes[0].Id}";
+        }
+
         return $"route:{family.Id}:{family.Routes[0].Id}";
     }
 
@@ -1463,6 +1674,24 @@ public partial class Home
             }
         }
 
+        if (parts.Length >= 4 && parts[0] == "subroute")
+        {
+            RouteFamilyDefinition? outerFamily =
+                configuration.Families.FirstOrDefault(candidate => candidate.Id == parts[1]);
+            RouteFamilyDefinition? profile =
+                outerFamily?.SemanticRouter?.Profiles.FirstOrDefault(candidate => candidate.Id == parts[2]);
+            RouteDefinition? route =
+                profile?.Routes.FirstOrDefault(candidate => candidate.Id == parts[3]);
+            if (outerFamily is not null && profile is not null && route is not null)
+            {
+                return new RouteLocation(
+                    profile.Id,
+                    $"{outerFamily.Name} / {profile.Name}",
+                    route,
+                    IsGlobalFallback: false);
+            }
+        }
+
         return null;
     }
 
@@ -1488,25 +1717,7 @@ public partial class Home
 
         foreach (RouteFamilyDefinition family in configuration.Families)
         {
-            string familyVariable = $"{ToVariableName(family.Name)}Route";
-            string candidates = string.Join(", ", family.Routes.Select(route => ToVariableName(route.Name)));
-            switch (family.ResiliencePolicy)
-            {
-                case "Ordered":
-                    builder.AppendLine($"using IChatClient {familyVariable} =");
-                    builder.AppendLine($"    new OrderedFailoverChatClient([{candidates}]);");
-                    break;
-                case "Cooldown":
-                    builder.AppendLine($"using IChatClient {familyVariable} =");
-                    builder.AppendLine($"    new CooldownFailoverChatClient([{candidates}],");
-                    builder.AppendLine($"        TimeSpan.FromSeconds({family.CooldownSeconds}));");
-                    break;
-                default:
-                    builder.AppendLine($"IChatClient {familyVariable} = {ToVariableName(family.Routes[0].Name)};");
-                    break;
-            }
-
-            builder.AppendLine();
+            AppendFamilyClientCode(builder, family, parentName: null);
         }
 
         string selectorVariable;
@@ -1520,14 +1731,14 @@ public partial class Home
             builder.AppendLine("    {");
             foreach (RouteFamilyDefinition family in configuration.Families.Where(family => !family.IsDefault))
             {
-                builder.AppendLine($"        [{ToVariableName(family.Name)}Route] = [/* {family.ProfileExamples} */],");
+                builder.AppendLine($"        [{GetFamilyVariableName(family, null)}] = [/* {family.ProfileExamples} */],");
             }
 
             builder.AppendLine("    },");
             RouteFamilyDefinition defaultFamily =
                 configuration.Families.FirstOrDefault(family => family.IsDefault) ??
                 configuration.Families[^1];
-            builder.AppendLine($"    defaultClient: {ToVariableName(defaultFamily.Name)}Route,");
+            builder.AppendLine($"    defaultClient: {GetFamilyVariableName(defaultFamily, null)},");
             builder.AppendLine($"    scoreThreshold: {configuration.ScoreThreshold:0.00}f,");
             if (configuration.SelectionPolicy == "StickySemantic")
             {
@@ -1544,7 +1755,7 @@ public partial class Home
         }
         else
         {
-            selectorVariable = $"{ToVariableName(configuration.Families[0].Name)}Route";
+            selectorVariable = GetFamilyVariableName(configuration.Families[0], null);
         }
 
         if (configuration.GlobalFallbackEnabled)
@@ -1561,6 +1772,64 @@ public partial class Home
 
         return builder.ToString().TrimEnd();
     }
+
+    private static string AppendFamilyClientCode(
+        StringBuilder builder,
+        RouteFamilyDefinition family,
+        string? parentName)
+    {
+        string familyVariable = GetFamilyVariableName(family, parentName);
+        if (family.SemanticRouter is { } semanticRouter)
+        {
+            foreach (RouteFamilyDefinition profile in semanticRouter.Profiles)
+            {
+                AppendFamilyClientCode(builder, profile, family.Name);
+            }
+
+            builder.AppendLine($"using IChatClient {familyVariable} = new SemanticRoutingChatClient(");
+            builder.AppendLine("    embeddings,");
+            builder.AppendLine("    new Dictionary<IChatClient, IReadOnlyList<string>>");
+            builder.AppendLine("    {");
+            foreach (RouteFamilyDefinition profile in semanticRouter.Profiles.Where(profile => !profile.IsDefault))
+            {
+                builder.AppendLine(
+                    $"        [{GetFamilyVariableName(profile, family.Name)}] = [/* {profile.ProfileExamples} */],");
+            }
+
+            RouteFamilyDefinition defaultProfile =
+                semanticRouter.Profiles.FirstOrDefault(profile => profile.IsDefault) ??
+                semanticRouter.Profiles[^1];
+            builder.AppendLine("    },");
+            builder.AppendLine($"    defaultClient: {GetFamilyVariableName(defaultProfile, family.Name)},");
+            builder.AppendLine($"    scoreThreshold: {semanticRouter.ScoreThreshold:0.00}f,");
+            builder.AppendLine($"    topK: {semanticRouter.TopK});");
+            builder.AppendLine();
+            return familyVariable;
+        }
+
+        string candidates = string.Join(", ", family.Routes.Select(route => ToVariableName(route.Name)));
+        switch (family.ResiliencePolicy)
+        {
+            case "Ordered":
+                builder.AppendLine($"using IChatClient {familyVariable} =");
+                builder.AppendLine($"    new OrderedFailoverChatClient([{candidates}]);");
+                break;
+            case "Cooldown":
+                builder.AppendLine($"using IChatClient {familyVariable} =");
+                builder.AppendLine($"    new CooldownFailoverChatClient([{candidates}],");
+                builder.AppendLine($"        TimeSpan.FromSeconds({family.CooldownSeconds}));");
+                break;
+            default:
+                builder.AppendLine($"IChatClient {familyVariable} = {ToVariableName(family.Routes[0].Name)};");
+                break;
+        }
+
+        builder.AppendLine();
+        return familyVariable;
+    }
+
+    private static string GetFamilyVariableName(RouteFamilyDefinition family, string? parentName) =>
+        $"{ToVariableName(parentName is null ? family.Name : $"{parentName} {family.Name}")}Route";
 
     private static string ToVariableName(string value)
     {
@@ -1664,7 +1933,7 @@ public partial class Home
         new()
         {
             ScenarioId = "sticky-reasoning",
-            ScenarioName = "Sticky reasoning levels",
+            ScenarioName = "Sticky model and reasoning routing",
             SelectionPolicy = "StickySemantic",
             ScoreThreshold = 0.35,
             TopK = 3,
@@ -1672,50 +1941,90 @@ public partial class Home
             GlobalFallbackEnabled = false,
             Families =
             [
-                CreateFamily(
-                    "low",
-                    "Low reasoning",
+                CreateSemanticModelFamily(
+                    "simple",
+                    "Simple tasks",
                     "simple task, quick answer, short summary, rewrite, routine request, straightforward question",
-                    "None",
-                    [
-                        CreateRoute(
-                            "low-reasoning",
-                            "Low reasoning model",
-                            "gpt-5.4-mini",
-                            "low",
-                            0.2,
-                            "Handle simple and routine tasks efficiently."),
-                    ]),
-                CreateFamily(
-                    "medium",
-                    "Medium reasoning",
+                    "gpt-5.4-mini"),
+                CreateSemanticModelFamily(
+                    "balanced",
+                    "Balanced tasks",
                     "moderate task, explain a concept, compare options, make a plan, general analysis",
-                    "None",
-                    [
-                        CreateRoute(
-                            "medium-reasoning",
-                            "Medium reasoning model",
-                            "gpt-5.4",
-                            "medium",
-                            0.2,
-                            "Use balanced reasoning for moderately complex tasks."),
-                    ],
+                    "gpt-5.4",
                     isDefault: true),
-                CreateFamily(
-                    "high",
-                    "High reasoning",
+                CreateSemanticModelFamily(
+                    "complex",
+                    "Complex tasks",
                     "complex task, difficult debugging, architecture design, deep analysis, multi-step problem, hard problem",
-                    "None",
-                    [
-                        CreateRoute(
-                            "high-reasoning",
-                            "High reasoning model",
-                            "gpt-5.5",
-                            "high",
-                            0.2,
-                            "Reason carefully through complex multi-step tasks."),
-                    ]),
+                    "gpt-5.5"),
             ],
+        };
+
+    private static RouteFamilyDefinition CreateSemanticModelFamily(
+        string name,
+        string purpose,
+        string profileExamples,
+        string modelId,
+        bool isDefault = false) =>
+        new()
+        {
+            Name = name,
+            Purpose = purpose,
+            ProfileExamples = profileExamples,
+            IsDefault = isDefault,
+            SemanticRouter = new SemanticRouterDefinition
+            {
+                Name = $"{modelId} SemanticRoutingChatClient",
+                ScoreThreshold = 0.35,
+                TopK = 3,
+                ScoreAggregation = "Mean",
+                Profiles =
+                [
+                    CreateFamily(
+                        "low",
+                        "Low reasoning",
+                        "brief answer, answer directly, minimal analysis, concise response, quick response",
+                        "None",
+                        [
+                            CreateRoute(
+                                $"{modelId}-low",
+                                $"{modelId} low reasoning",
+                                modelId,
+                                "low",
+                                0.2,
+                                "Answer directly with minimal reasoning overhead."),
+                        ]),
+                    CreateFamily(
+                        "medium",
+                        "Medium reasoning",
+                        "explain reasoning, compare tradeoffs, step by step, balanced analysis, make a plan",
+                        "None",
+                        [
+                            CreateRoute(
+                                $"{modelId}-medium",
+                                $"{modelId} medium reasoning",
+                                modelId,
+                                "medium",
+                                0.2,
+                                "Use balanced reasoning and explain the important steps."),
+                        ],
+                        isDefault: true),
+                    CreateFamily(
+                        "high",
+                        "High reasoning",
+                        "reason deeply, verify assumptions, exhaustive analysis, difficult proof, careful multi-step reasoning",
+                        "None",
+                        [
+                            CreateRoute(
+                                $"{modelId}-high",
+                                $"{modelId} high reasoning",
+                                modelId,
+                                "high",
+                                0.2,
+                                "Reason deeply, verify assumptions, and check the result."),
+                        ]),
+                ],
+            },
         };
 
     private static PipelineConfiguration CreateCooldownScenario() =>

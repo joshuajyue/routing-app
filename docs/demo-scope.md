@@ -105,7 +105,7 @@ Starting scenarios are accelerators inside the first step:
 | Preset | Purpose |
 | --- | --- |
 | Semantic route families | Select coding, creative, and general family clients whose targets have independent resilience |
-| Sticky reasoning levels | Use `StickySemanticRoutingChatClient` to classify low/medium/high once and cache the selected family by application session ID |
+| Sticky model and reasoning routing | Pin a broad model family by application session ID, then use that model family’s own semantic router to select reasoning effort per turn |
 | Ordered failover | Walk a ranked list after deterministic pre-output failures |
 | Semantic plus outer fallback | Wrap the semantic router and a global emergency client in ordered failover |
 | Observable failover | Expose exact `FailoverChatClientAttempt` records from a custom `FailoverChatClient` |
@@ -351,19 +351,34 @@ should:
 - Avoid pinning a failed or abandoned first response.
 - Allow clearing the pin independently of clearing chat history.
 
-The sticky reasoning preset renders this as:
+The sticky model-and-reasoning preset renders this as:
 
 ```text
 StickySemanticRoutingChatClient
-`-- SemanticRoutingChatClient   first unpinned turn only
-    |-- low    -> gpt-5.4-mini
-    |-- medium -> gpt-5.4       default
-    `-- high   -> gpt-5.5
+|-- simple profile   -> SemanticRoutingChatClient (gpt-5.4-mini)
+|   |-- low    -> gpt-5.4-mini / low
+|   |-- medium -> gpt-5.4-mini / medium
+|   `-- high   -> gpt-5.4-mini / high
+|-- balanced profile -> SemanticRoutingChatClient (gpt-5.4)
+|   |-- low    -> gpt-5.4 / low
+|   |-- medium -> gpt-5.4 / medium
+|   `-- high   -> gpt-5.4 / high
+`-- complex profile  -> SemanticRoutingChatClient (gpt-5.5)
+    |-- low    -> gpt-5.5 / low
+    |-- medium -> gpt-5.5 / medium
+    `-- high   -> gpt-5.5 / high
 ```
 
-Its profiles use broad task-complexity examples such as simple/routine,
-moderate/explanatory, and complex/multi-step. The selected family is cached
-only after a response completes successfully.
+The sticky selector owns broad simple/balanced/complex utterances and caches
+the selected model family only after a response completes successfully. Each
+child `SemanticRoutingChatClient` owns separate low/medium/high utterances and
+continues selecting reasoning effort on every turn, including after the model
+family is pinned.
+
+Profile utterances are edited from the semantic selector that owns them rather
+than from the child target. Selecting the sticky node edits its model-family
+profiles; selecting an inner semantic node edits that model’s reasoning
+profiles.
 
 ### Health-aware extension
 

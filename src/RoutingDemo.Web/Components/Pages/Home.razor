@@ -110,7 +110,7 @@
                                     <h3>@GetSelectedNodeTitle()</h3>
                                 </header>
 
-                                @if (SelectedNodeKey is "selector" or "outer" or "classifier")
+                                @if (SelectedNodeKey is "selector" or "outer")
                                 {
                                     <div class="inspector-fields">
                                         <label>
@@ -162,6 +162,30 @@
                                                     <small>Pin after the first completed response.</small>
                                                 </div>
                                             }
+
+                                            <div class="semantic-profile-editor">
+                                                <div class="profile-editor-heading">
+                                                    <strong>Owned profiles</strong>
+                                                    <small>Utterances used to select each child client.</small>
+                                                </div>
+                                                @foreach (RouteFamilyDefinition profile in Draft.Families)
+                                                {
+                                                    <label class="semantic-profile-row">
+                                                        <span>
+                                                            <input type="radio"
+                                                                   name="top-level-default-profile"
+                                                                   checked="@profile.IsDefault"
+                                                                   @onchange="() => MakeDefault(profile)" />
+                                                            <strong>@profile.Name</strong>
+                                                            @if (profile.IsDefault)
+                                                            {
+                                                                <small>default</small>
+                                                            }
+                                                        </span>
+                                                        <textarea rows="2" @bind="profile.ProfileExamples"></textarea>
+                                                    </label>
+                                                }
+                                            </div>
                                         }
 
                                         <label class="check-field">
@@ -173,9 +197,70 @@
                                         </label>
                                     </div>
                                 }
-                                else if (SelectedFamily is not null && SelectedRoute is null)
+                                else if (SelectedSemanticRouter is { } semanticRouter &&
+                                         SelectedFamily is { } semanticOwner)
                                 {
-                                    RouteFamilyDefinition family = SelectedFamily;
+                                    <div class="inspector-fields">
+                                        <div class="inspector-grid three">
+                                            <label>
+                                                <span>Threshold</span>
+                                                <input type="number" min="0" max="1" step="0.05"
+                                                       @bind="semanticRouter.ScoreThreshold" />
+                                            </label>
+                                            <label>
+                                                <span>Top K</span>
+                                                <select @bind="semanticRouter.TopK">
+                                                    <option value="1">1</option>
+                                                    <option value="3">3</option>
+                                                    <option value="5">5</option>
+                                                </select>
+                                            </label>
+                                            <label>
+                                                <span>Aggregation</span>
+                                                <select @bind="semanticRouter.ScoreAggregation">
+                                                    <option>Mean</option>
+                                                    <option>Sum</option>
+                                                </select>
+                                            </label>
+                                        </div>
+
+                                        <div class="semantic-profile-editor">
+                                            <div class="profile-editor-heading">
+                                                <strong>Owned profiles</strong>
+                                                <small>Utterances used to select reasoning effort.</small>
+                                            </div>
+                                            @foreach (RouteFamilyDefinition profile in semanticRouter.Profiles)
+                                            {
+                                                <label class="semantic-profile-row">
+                                                    <span>
+                                                        <input type="radio"
+                                                               name="@($"inner-default-{semanticRouter.Id}")"
+                                                               checked="@profile.IsDefault"
+                                                               @onchange="() => MakeDefault(profile)" />
+                                                        <strong>@profile.Name</strong>
+                                                        @if (profile.IsDefault)
+                                                        {
+                                                            <small>default</small>
+                                                        }
+                                                    </span>
+                                                    <textarea rows="2" @bind="profile.ProfileExamples"></textarea>
+                                                </label>
+                                            }
+                                        </div>
+
+                                        <div class="inspector-actions">
+                                            <button class="button button-primary"
+                                                    type="button"
+                                                    @onclick="() => AddSemanticProfile(semanticOwner)">
+                                                Add reasoning profile
+                                            </button>
+                                        </div>
+                                    </div>
+                                }
+                                else if ((SelectedInnerFamily ?? SelectedFamily) is { } family &&
+                                         SelectedRoute is null)
+                                {
+                                    bool ownsSemanticRouter = family.SemanticRouter is not null;
                                     <div class="inspector-fields">
                                         <div class="inspector-grid two">
                                             <label>
@@ -188,80 +273,79 @@
                                             </label>
                                         </div>
 
-                                        @if (UsesSemanticSelection(Draft.SelectionPolicy))
+                                        @if (ownsSemanticRouter)
                                         {
-                                            <label>
-                                                <span>Semantic profile examples <small>comma separated</small></span>
-                                                <textarea rows="3" @bind="family.ProfileExamples"></textarea>
-                                            </label>
-
-                                            <label class="check-field">
-                                                <input type="radio"
-                                                       name="default-family"
-                                                       checked="@family.IsDefault"
-                                                       @onchange="() => MakeDefault(family)" />
+                                            <button class="semantic-target-card"
+                                                    type="button"
+                                                    @onclick="() => SelectSemanticRouter(family)">
+                                                <span class="callout-glyph">SR</span>
                                                 <span>
-                                                    <strong>Default semantic family</strong>
-                                                    <small>Selected when no profile clears the threshold.</small>
+                                                    <strong>@family.SemanticRouter!.Name</strong>
+                                                    <small>@family.SemanticRouter.Profiles.Count reasoning profiles</small>
                                                 </span>
-                                            </label>
+                                            </button>
                                         }
-
-                                        <div class="field-group">
-                                            <span class="field-label">Family resilience</span>
-                                            <div class="segmented-control resilience-control">
-                                                @foreach (var option in ResilienceOptions)
+                                        else
+                                        {
+                                            <div class="field-group">
+                                                <span class="field-label">Family resilience</span>
+                                                <div class="segmented-control resilience-control">
+                                                    @foreach (var option in ResilienceOptions)
+                                                    {
+                                                        bool optionDisabled =
+                                                            option.Value == "None" && family.Routes.Count != 1;
+                                                        <button type="button"
+                                                                class="@(family.ResiliencePolicy == option.Value ? "selected" : null)"
+                                                                disabled="@optionDisabled"
+                                                                title="@(optionDisabled ? "Remove backup clients before selecting Single." : option.Description)"
+                                                                @onclick="() => SetFamilyResilience(family, option.Value)">
+                                                            @option.Label
+                                                        </button>
+                                                    }
+                                                </div>
+                                                <small class="field-help">@GetResilienceDescription(family.ResiliencePolicy)</small>
+                                                @if (family.Routes.Count > 1)
                                                 {
-                                                    bool optionDisabled =
-                                                        option.Value == "None" && family.Routes.Count != 1;
-                                                    <button type="button"
-                                                            class="@(family.ResiliencePolicy == option.Value ? "selected" : null)"
-                                                            disabled="@optionDisabled"
-                                                            title="@(optionDisabled ? "Remove backup clients before selecting Single." : option.Description)"
-                                                            @onclick="() => SetFamilyResilience(family, option.Value)">
-                                                        @option.Label
-                                                    </button>
+                                                    <small class="field-help constraint-help">
+                                                        Single requires exactly one model client. Remove backups first.
+                                                    </small>
                                                 }
                                             </div>
-                                            <small class="field-help">@GetResilienceDescription(family.ResiliencePolicy)</small>
-                                            @if (family.Routes.Count > 1)
-                                            {
-                                                <small class="field-help constraint-help">
-                                                    Single requires exactly one model client. Remove backups first.
-                                                </small>
-                                            }
-                                        </div>
 
-                                        @if (family.ResiliencePolicy != "None")
-                                        {
-                                            <div class="inspector-grid two">
-                                                <label>
-                                                    <span>Maximum attempts</span>
-                                                    <select @bind="family.MaximumAttempts">
-                                                        @for (var attempt = 1; attempt <= 6; attempt++)
-                                                        {
-                                                            <option value="@attempt">@attempt</option>
-                                                        }
-                                                    </select>
-                                                </label>
-                                                @if (family.ResiliencePolicy == "Cooldown")
-                                                {
+                                            @if (family.ResiliencePolicy != "None")
+                                            {
+                                                <div class="inspector-grid two">
                                                     <label>
-                                                        <span>Cooldown</span>
-                                                        <select @bind="family.CooldownSeconds">
-                                                            <option value="10">10 seconds</option>
-                                                            <option value="30">30 seconds</option>
-                                                            <option value="60">60 seconds</option>
+                                                        <span>Maximum attempts</span>
+                                                        <select @bind="family.MaximumAttempts">
+                                                            @for (var attempt = 1; attempt <= 6; attempt++)
+                                                            {
+                                                                <option value="@attempt">@attempt</option>
+                                                            }
                                                         </select>
                                                     </label>
-                                                }
-                                            </div>
+                                                    @if (family.ResiliencePolicy == "Cooldown")
+                                                    {
+                                                        <label>
+                                                            <span>Cooldown</span>
+                                                            <select @bind="family.CooldownSeconds">
+                                                                <option value="10">10 seconds</option>
+                                                                <option value="30">30 seconds</option>
+                                                                <option value="60">60 seconds</option>
+                                                            </select>
+                                                        </label>
+                                                    }
+                                                </div>
+                                            }
                                         }
 
                                         <div class="inspector-actions">
-                                            <button class="button button-primary" type="button" @onclick="() => AddRoute(family)">
-                                                Add model client
-                                            </button>
+                                            @if (!ownsSemanticRouter)
+                                            {
+                                                <button class="button button-primary" type="button" @onclick="() => AddRoute(family)">
+                                                    Add model client
+                                                </button>
+                                            }
                                             <button class="button button-quiet" type="button"
                                                     disabled="@IsFirstFamily(family)"
                                                     @onclick="() => MoveFamily(family, -1)">
@@ -273,7 +357,7 @@
                                                 Move down
                                             </button>
                                             <button class="button button-danger" type="button"
-                                                    disabled="@(Draft.Families.Count <= 1)"
+                                                    disabled="@(GetFamilyOwner(family).Count <= 1)"
                                                     @onclick="() => RemoveFamily(family)">
                                                 Remove family
                                             </button>
@@ -283,7 +367,7 @@
                                 else if (SelectedRoute is not null)
                                 {
                                     RouteDefinition route = SelectedRoute;
-                                    RouteFamilyDefinition? family = SelectedRouteFamily;
+                                    RouteFamilyDefinition? routeFamily = SelectedRouteFamily;
                                     bool isGlobal = SelectedNodeKey.StartsWith("global:", StringComparison.Ordinal);
 
                                     <div class="inspector-fields">
@@ -354,22 +438,22 @@
                                             <textarea rows="4" @bind="route.Instructions"></textarea>
                                         </label>
 
-                                        @if (!isGlobal && family is not null)
+                                        @if (!isGlobal && routeFamily is not null)
                                         {
                                             <div class="inspector-actions">
                                                 <button class="button button-quiet" type="button"
-                                                        disabled="@IsFirstRoute(family, route)"
-                                                        @onclick="() => MoveRoute(family, route, -1)">
+                                                        disabled="@IsFirstRoute(routeFamily, route)"
+                                                        @onclick="() => MoveRoute(routeFamily, route, -1)">
                                                     Move up
                                                 </button>
                                                 <button class="button button-quiet" type="button"
-                                                        disabled="@IsLastRoute(family, route)"
-                                                        @onclick="() => MoveRoute(family, route, 1)">
+                                                        disabled="@IsLastRoute(routeFamily, route)"
+                                                        @onclick="() => MoveRoute(routeFamily, route, 1)">
                                                     Move down
                                                 </button>
                                                 <button class="button button-danger" type="button"
-                                                        disabled="@(family.Routes.Count <= 1)"
-                                                        @onclick="() => RemoveRoute(family, route)">
+                                                        disabled="@(routeFamily.Routes.Count <= 1)"
+                                                        @onclick="() => RemoveRoute(routeFamily, route)">
                                                     Remove client
                                                 </button>
                                             </div>
@@ -675,6 +759,10 @@
                             </div>
                             <dl>
                                 <div><dt>Selected family</dt><dd>@CurrentDebug.SelectedRoute</dd></div>
+                                @if (CurrentDebug.SelectedInnerRoute != "Pending")
+                                {
+                                    <div><dt>Reasoning profile</dt><dd>@CurrentDebug.SelectedInnerRoute</dd></div>
+                                }
                                 <div><dt>Completed client</dt><dd>@CurrentDebug.FinalRoute</dd></div>
                                 <div><dt>Family resilience</dt><dd>@CurrentDebug.ResiliencePolicy</dd></div>
                                 <div><dt>Actual model</dt><dd>@CurrentDebug.ActualModel</dd></div>
@@ -690,24 +778,28 @@
                             <section class="debug-section">
                                 <div class="debug-section-heading">
                                     <h3>Semantic family evidence</h3>
-                                    <span>@ActiveConfiguration.ScoreAggregation / top @ActiveConfiguration.TopK</span>
+                                    <span>@CurrentDebug.Scores.Select(score => score.Layer).Distinct().Count() layer(s)</span>
                                 </div>
-                                <div class="score-list">
-                                    @foreach (RoutingScore score in CurrentDebug.Scores.OrderByDescending(score => score.Score))
-                                    {
-                                        <div class="score-row">
-                                            <div>
-                                                <strong>@score.RouteFamilyName</strong>
-                                                <small>@(string.IsNullOrWhiteSpace(score.MatchedTerms) ? "No direct terms" : score.MatchedTerms)</small>
+                                @foreach (IGrouping<string, RoutingScore> scoreLayer in
+                                    CurrentDebug.Scores.GroupBy(score => score.Layer))
+                                {
+                                    <div class="score-layer-label">@scoreLayer.Key</div>
+                                    <div class="score-list">
+                                        @foreach (RoutingScore score in scoreLayer.OrderByDescending(score => score.Score))
+                                        {
+                                            <div class="score-row">
+                                                <div>
+                                                    <strong>@score.RouteFamilyName</strong>
+                                                    <small>@(string.IsNullOrWhiteSpace(score.MatchedTerms) ? "No direct terms" : score.MatchedTerms)</small>
+                                                </div>
+                                                <div class="score-meter">
+                                                    <span style="width: @($"{Math.Clamp(score.Score, 0, 1) * 100:0}%")"></span>
+                                                </div>
+                                                <strong>@score.Score.ToString("0.00")</strong>
                                             </div>
-                                            <div class="score-meter">
-                                                <span style="width: @($"{Math.Clamp(score.Score, 0, 1) * 100:0}%")"></span>
-                                            </div>
-                                            <strong>@score.Score.ToString("0.00")</strong>
-                                        </div>
-                                    }
-                                </div>
-                                <p class="threshold-note">Threshold @ActiveConfiguration.ScoreThreshold.ToString("0.00")</p>
+                                        }
+                                    </div>
+                                }
                             </section>
                         }
 

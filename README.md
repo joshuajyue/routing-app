@@ -54,9 +54,11 @@ The demo is intentionally deterministic and does not require an API key.
   family promotes the selector to semantic routing.
 - The reasoning preset semantically selects low, medium, or high reasoning
   wrappers over the same model, with no failover between reasoning levels.
-- The sticky reasoning preset classifies the first successful turn, caches the
-  selected family by application session ID, and routes subsequent turns to
-  `gpt-5.4-mini`, `gpt-5.4`, or `gpt-5.5`.
+- The sticky model-and-reasoning preset pins a broad `gpt-5.4-mini`, `gpt-5.4`,
+  or `gpt-5.5` model family by application session ID. That family’s own
+  semantic router still selects low, medium, or high reasoning on every turn.
+- Semantic profile utterances are edited from the selector that owns them,
+  including both the sticky model profiles and each model’s reasoning profiles.
 - Optional whole-pipeline emergency fallback.
 - Per-route model ID, reasoning, temperature, instruction, and token controls.
 - Simulated streaming and non-streaming chat.

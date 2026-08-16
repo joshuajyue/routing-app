@@ -25,17 +25,7 @@
         <div class="tree-branch root-branch">
             <div class="tree-subtree">
                 @RenderSelectorNode()
-                @if (IsStickySemantic)
-                {
-                    <div class="tree-branch sticky-classifier-branch">
-                        @RenderSemanticClassifierNode()
-                        @RenderFamilies()
-                    </div>
-                }
-                else
-                {
-                    @RenderFamilies()
-                }
+                @RenderFamilies()
             </div>
 
             <button class="@NodeClass(globalKey, "tree-node route global-fallback")"
@@ -56,17 +46,7 @@
     else
     {
         @RenderSelectorNode(isRoot: true)
-        @if (IsStickySemantic)
-        {
-            <div class="tree-branch sticky-classifier-branch">
-                @RenderSemanticClassifierNode()
-                @RenderFamilies()
-            </div>
-        }
-        else
-        {
-            @RenderFamilies()
-        }
+        @RenderFamilies()
     }
 </div>
 
@@ -139,38 +119,6 @@
         builder.CloseElement();
     };
 
-    private RenderFragment RenderSemanticClassifierNode() => builder =>
-    {
-        const string key = "classifier";
-        builder.OpenElement(0, "button");
-        builder.AddAttribute(1, "class", NodeClass(key, "tree-node selector semantic-classifier"));
-        builder.AddAttribute(2, "type", "button");
-        builder.AddAttribute(3, "role", "treeitem");
-        builder.AddAttribute(4, "disabled", !Interactive);
-        builder.AddAttribute(5, "aria-pressed", SelectedNodeKey == key);
-        builder.AddAttribute(6, "onclick", EventCallback.Factory.Create(this, () => SelectNodeAsync(key)));
-        builder.OpenElement(7, "span");
-        builder.AddAttribute(8, "class", "node-glyph selector-glyph");
-        builder.AddContent(9, "SR");
-        builder.CloseElement();
-        builder.OpenElement(10, "span");
-        builder.AddAttribute(11, "class", "node-copy");
-        builder.OpenElement(12, "strong");
-        builder.AddContent(13, "SemanticRoutingChatClient");
-        builder.CloseElement();
-        builder.OpenElement(14, "small");
-        builder.AddContent(
-            15,
-            $"First unpinned turn / top {Configuration.TopK} / threshold {Configuration.ScoreThreshold:0.00}");
-        builder.CloseElement();
-        builder.CloseElement();
-        builder.OpenElement(16, "span");
-        builder.AddAttribute(17, "class", "node-kind");
-        builder.AddContent(18, "classifier");
-        builder.CloseElement();
-        builder.CloseElement();
-    };
-
     private RenderFragment RenderFamilies() => builder =>
     {
         builder.OpenElement(0, "div");
@@ -179,125 +127,265 @@
         int sequence = 2;
         foreach (RouteFamilyDefinition family in Configuration.Families)
         {
-            string familyKey = $"family:{family.Id}";
-            builder.OpenElement(sequence++, "div");
-            builder.AddAttribute(sequence++, "class", "tree-subtree family-subtree");
+            RenderFamily(builder, family, ref sequence, outerFamilyId: null);
+        }
 
+        builder.CloseElement();
+    };
+
+    private void RenderFamily(
+        Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder builder,
+        RouteFamilyDefinition family,
+        ref int sequence,
+        string? outerFamilyId)
+    {
+        bool nested = outerFamilyId is not null;
+        if (!nested && family.SemanticRouter is not null)
+        {
+            RenderSemanticFamily(builder, family, ref sequence);
+            return;
+        }
+
+        string familyKey = nested
+            ? $"subfamily:{outerFamilyId}:{family.Id}"
+            : $"family:{family.Id}";
+        builder.OpenElement(sequence++, "div");
+        builder.AddAttribute(sequence++, "class", "tree-subtree family-subtree");
+
+        builder.OpenElement(sequence++, "button");
+        builder.AddAttribute(sequence++, "class", NodeClass(familyKey, "tree-node family"));
+        builder.AddAttribute(sequence++, "type", "button");
+        builder.AddAttribute(sequence++, "role", "treeitem");
+        builder.AddAttribute(sequence++, "disabled", !Interactive);
+        builder.AddAttribute(sequence++, "aria-pressed", SelectedNodeKey == familyKey);
+        builder.AddAttribute(
+            sequence++,
+            "onclick",
+            EventCallback.Factory.Create(this, () => SelectNodeAsync(familyKey)));
+        builder.OpenElement(sequence++, "span");
+        builder.AddAttribute(sequence++, "class", "family-glyph");
+        builder.AddContent(sequence++, FamilyMonogram(family.Name));
+        builder.CloseElement();
+        builder.OpenElement(sequence++, "span");
+        builder.AddAttribute(sequence++, "class", "node-copy");
+        builder.OpenElement(sequence++, "strong");
+        builder.AddContent(sequence++, family.Name);
+        builder.CloseElement();
+        builder.OpenElement(sequence++, "small");
+        builder.AddContent(
+            sequence++,
+            IsSemanticSelection || nested
+                ? $"{family.Purpose} semantic profile"
+                : family.Purpose);
+        builder.CloseElement();
+        builder.CloseElement();
+        if (!nested && family.Id == PinnedFamilyId)
+        {
+            builder.OpenElement(sequence++, "span");
+            builder.AddAttribute(sequence++, "class", "tree-tag pinned");
+            builder.AddContent(sequence++, "pinned");
+            builder.CloseElement();
+        }
+        else if (family.IsDefault)
+        {
+            builder.OpenElement(sequence++, "span");
+            builder.AddAttribute(sequence++, "class", "tree-tag");
+            builder.AddContent(sequence++, "default");
+            builder.CloseElement();
+        }
+
+        builder.CloseElement();
+
+        builder.OpenElement(sequence++, "div");
+        builder.AddAttribute(sequence++, "class", "tree-branch target-branch");
+
+        if (family.SemanticRouter is { } semanticRouter)
+        {
+            string semanticKey = $"semantic:{family.Id}";
+            builder.OpenElement(sequence++, "div");
+            builder.AddAttribute(sequence++, "class", "tree-subtree semantic-subtree");
             builder.OpenElement(sequence++, "button");
-            builder.AddAttribute(sequence++, "class", NodeClass(familyKey, "tree-node family"));
+            builder.AddAttribute(sequence++, "class", NodeClass(semanticKey, "tree-node selector inner-semantic"));
             builder.AddAttribute(sequence++, "type", "button");
             builder.AddAttribute(sequence++, "role", "treeitem");
             builder.AddAttribute(sequence++, "disabled", !Interactive);
-            builder.AddAttribute(sequence++, "aria-pressed", SelectedNodeKey == familyKey);
+            builder.AddAttribute(sequence++, "aria-pressed", SelectedNodeKey == semanticKey);
             builder.AddAttribute(
                 sequence++,
                 "onclick",
-                EventCallback.Factory.Create(this, () => SelectNodeAsync(familyKey)));
+                EventCallback.Factory.Create(this, () => SelectNodeAsync(semanticKey)));
             builder.OpenElement(sequence++, "span");
-            builder.AddAttribute(sequence++, "class", "family-glyph");
-            builder.AddContent(sequence++, FamilyMonogram(family.Name));
+            builder.AddAttribute(sequence++, "class", "node-glyph selector-glyph");
+            builder.AddContent(sequence++, "SR");
             builder.CloseElement();
             builder.OpenElement(sequence++, "span");
             builder.AddAttribute(sequence++, "class", "node-copy");
             builder.OpenElement(sequence++, "strong");
-            builder.AddContent(sequence++, family.Name);
+            builder.AddContent(sequence++, semanticRouter.Name);
             builder.CloseElement();
             builder.OpenElement(sequence++, "small");
             builder.AddContent(
                 sequence++,
-                IsSemanticSelection
-                    ? $"{family.Purpose} semantic profile"
-                    : family.Purpose);
+                $"Top {semanticRouter.TopK} / {semanticRouter.ScoreAggregation} / threshold {semanticRouter.ScoreThreshold:0.00}");
             builder.CloseElement();
             builder.CloseElement();
-            if (family.Id == PinnedFamilyId)
-            {
-                builder.OpenElement(sequence++, "span");
-                builder.AddAttribute(sequence++, "class", "tree-tag pinned");
-                builder.AddContent(sequence++, "pinned");
-                builder.CloseElement();
-            }
-            else if (family.IsDefault)
-            {
-                builder.OpenElement(sequence++, "span");
-                builder.AddAttribute(sequence++, "class", "tree-tag");
-                builder.AddContent(sequence++, "default");
-                builder.CloseElement();
-            }
-
+            builder.OpenElement(sequence++, "span");
+            builder.AddAttribute(sequence++, "class", "node-kind");
+            builder.AddContent(sequence++, "selector");
+            builder.CloseElement();
             builder.CloseElement();
 
             builder.OpenElement(sequence++, "div");
-            builder.AddAttribute(sequence++, "class", "tree-branch target-branch");
-
-            if (family.ResiliencePolicy != "None")
+            builder.AddAttribute(sequence++, "class", "tree-branch family-branch nested-family-branch");
+            foreach (RouteFamilyDefinition profile in semanticRouter.Profiles)
             {
-                string policyKey = $"policy:{family.Id}";
-                builder.OpenElement(sequence++, "div");
-                builder.AddAttribute(sequence++, "class", "tree-subtree policy-subtree");
-                builder.OpenElement(sequence++, "button");
-                builder.AddAttribute(sequence++, "class", NodeClass(policyKey, "tree-node policy"));
-                builder.AddAttribute(sequence++, "type", "button");
-                builder.AddAttribute(sequence++, "role", "treeitem");
-                builder.AddAttribute(sequence++, "disabled", !Interactive);
-                builder.AddAttribute(sequence++, "aria-pressed", SelectedNodeKey == policyKey);
-                builder.AddAttribute(
-                    sequence++,
-                    "onclick",
-                    EventCallback.Factory.Create(this, () => SelectNodeAsync(policyKey)));
-                builder.OpenElement(sequence++, "span");
-                builder.AddAttribute(sequence++, "class", "node-glyph policy-glyph");
-                builder.AddContent(sequence++, family.ResiliencePolicy == "Cooldown" ? "CD" : "OF");
-                builder.CloseElement();
-                builder.OpenElement(sequence++, "span");
-                builder.AddAttribute(sequence++, "class", "node-copy");
-                builder.OpenElement(sequence++, "strong");
-                builder.AddContent(
-                    sequence++,
-                    family.ResiliencePolicy == "Cooldown"
-                        ? "CooldownFailoverChatClient"
-                        : "OrderedFailoverChatClient");
-                builder.CloseElement();
-                builder.OpenElement(sequence++, "small");
-                builder.AddContent(
-                    sequence++,
-                    family.ResiliencePolicy == "Cooldown"
-                        ? $"{family.CooldownSeconds}s cooldown / max {family.MaximumAttempts} attempts"
-                        : $"Static order / max {family.MaximumAttempts} attempts");
-                builder.CloseElement();
-                builder.CloseElement();
-                builder.OpenElement(sequence++, "span");
-                builder.AddAttribute(sequence++, "class", "node-kind");
-                builder.AddContent(sequence++, "resilience");
-                builder.CloseElement();
-                builder.CloseElement();
-
-                builder.OpenElement(sequence++, "div");
-                builder.AddAttribute(sequence++, "class", "tree-branch model-branch");
-                RenderRoutes(builder, family, ref sequence);
-                builder.CloseElement();
-                builder.CloseElement();
-            }
-            else
-            {
-                RenderRoutes(builder, family, ref sequence);
+                RenderFamily(builder, profile, ref sequence, family.Id);
             }
 
             builder.CloseElement();
             builder.CloseElement();
         }
 
-        builder.CloseElement();
-    };
+        else if (family.ResiliencePolicy != "None")
+        {
+            string policyKey = nested
+                ? $"subpolicy:{outerFamilyId}:{family.Id}"
+                : $"policy:{family.Id}";
+            builder.OpenElement(sequence++, "div");
+            builder.AddAttribute(sequence++, "class", "tree-subtree policy-subtree");
+            builder.OpenElement(sequence++, "button");
+            builder.AddAttribute(sequence++, "class", NodeClass(policyKey, "tree-node policy"));
+            builder.AddAttribute(sequence++, "type", "button");
+            builder.AddAttribute(sequence++, "role", "treeitem");
+            builder.AddAttribute(sequence++, "disabled", !Interactive);
+            builder.AddAttribute(sequence++, "aria-pressed", SelectedNodeKey == policyKey);
+            builder.AddAttribute(
+                sequence++,
+                "onclick",
+                EventCallback.Factory.Create(this, () => SelectNodeAsync(policyKey)));
+            builder.OpenElement(sequence++, "span");
+            builder.AddAttribute(sequence++, "class", "node-glyph policy-glyph");
+            builder.AddContent(sequence++, family.ResiliencePolicy == "Cooldown" ? "CD" : "OF");
+            builder.CloseElement();
+            builder.OpenElement(sequence++, "span");
+            builder.AddAttribute(sequence++, "class", "node-copy");
+            builder.OpenElement(sequence++, "strong");
+            builder.AddContent(
+                sequence++,
+                family.ResiliencePolicy == "Cooldown"
+                    ? "CooldownFailoverChatClient"
+                    : "OrderedFailoverChatClient");
+            builder.CloseElement();
+            builder.OpenElement(sequence++, "small");
+            builder.AddContent(
+                sequence++,
+                family.ResiliencePolicy == "Cooldown"
+                    ? $"{family.CooldownSeconds}s cooldown / max {family.MaximumAttempts} attempts"
+                    : $"Static order / max {family.MaximumAttempts} attempts");
+            builder.CloseElement();
+            builder.CloseElement();
+            builder.OpenElement(sequence++, "span");
+            builder.AddAttribute(sequence++, "class", "node-kind");
+            builder.AddContent(sequence++, "resilience");
+            builder.CloseElement();
+            builder.CloseElement();
 
-    private void RenderRoutes(
+            builder.OpenElement(sequence++, "div");
+            builder.AddAttribute(sequence++, "class", "tree-branch model-branch");
+            RenderRoutes(builder, family, ref sequence, outerFamilyId);
+            builder.CloseElement();
+            builder.CloseElement();
+        }
+        else
+        {
+            RenderRoutes(builder, family, ref sequence, outerFamilyId);
+        }
+
+        builder.CloseElement();
+        builder.CloseElement();
+    }
+
+    private void RenderSemanticFamily(
         Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder builder,
         RouteFamilyDefinition family,
         ref int sequence)
     {
+        SemanticRouterDefinition semanticRouter = family.SemanticRouter!;
+        string semanticKey = $"semantic:{family.Id}";
+
+        builder.OpenElement(sequence++, "div");
+        builder.AddAttribute(sequence++, "class", "tree-subtree semantic-subtree");
+        builder.OpenElement(sequence++, "button");
+        builder.AddAttribute(sequence++, "class", NodeClass(semanticKey, "tree-node selector inner-semantic"));
+        builder.AddAttribute(sequence++, "type", "button");
+        builder.AddAttribute(sequence++, "role", "treeitem");
+        builder.AddAttribute(sequence++, "disabled", !Interactive);
+        builder.AddAttribute(sequence++, "aria-pressed", SelectedNodeKey == semanticKey);
+        builder.AddAttribute(
+            sequence++,
+            "onclick",
+            EventCallback.Factory.Create(this, () => SelectNodeAsync(semanticKey)));
+        builder.OpenElement(sequence++, "span");
+        builder.AddAttribute(sequence++, "class", "node-glyph selector-glyph");
+        builder.AddContent(sequence++, "SR");
+        builder.CloseElement();
+        builder.OpenElement(sequence++, "span");
+        builder.AddAttribute(sequence++, "class", "node-copy");
+        builder.OpenElement(sequence++, "strong");
+        builder.AddContent(sequence++, semanticRouter.Name);
+        builder.CloseElement();
+        builder.OpenElement(sequence++, "small");
+        builder.AddContent(
+            sequence++,
+            $"{family.Name} profile / top {semanticRouter.TopK} / threshold {semanticRouter.ScoreThreshold:0.00}");
+        builder.CloseElement();
+        builder.CloseElement();
+        if (family.Id == PinnedFamilyId)
+        {
+            builder.OpenElement(sequence++, "span");
+            builder.AddAttribute(sequence++, "class", "tree-tag pinned");
+            builder.AddContent(sequence++, "pinned");
+            builder.CloseElement();
+        }
+        else if (family.IsDefault)
+        {
+            builder.OpenElement(sequence++, "span");
+            builder.AddAttribute(sequence++, "class", "tree-tag");
+            builder.AddContent(sequence++, "default");
+            builder.CloseElement();
+        }
+        else
+        {
+            builder.OpenElement(sequence++, "span");
+            builder.AddAttribute(sequence++, "class", "node-kind");
+            builder.AddContent(sequence++, "selector");
+            builder.CloseElement();
+        }
+
+        builder.CloseElement();
+
+        builder.OpenElement(sequence++, "div");
+        builder.AddAttribute(sequence++, "class", "tree-branch family-branch nested-family-branch");
+        foreach (RouteFamilyDefinition profile in semanticRouter.Profiles)
+        {
+            RenderFamily(builder, profile, ref sequence, family.Id);
+        }
+
+        builder.CloseElement();
+        builder.CloseElement();
+    }
+
+    private void RenderRoutes(
+        Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder builder,
+        RouteFamilyDefinition family,
+        ref int sequence,
+        string? outerFamilyId)
+    {
         foreach (RouteDefinition route in family.Routes)
         {
-            string routeKey = $"route:{family.Id}:{route.Id}";
+            string routeKey = outerFamilyId is null
+                ? $"route:{family.Id}:{route.Id}"
+                : $"subroute:{outerFamilyId}:{family.Id}:{route.Id}";
             builder.OpenElement(sequence++, "button");
             builder.AddAttribute(sequence++, "class", NodeClass(routeKey, "tree-node route"));
             builder.AddAttribute(sequence++, "type", "button");

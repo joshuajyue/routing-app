@@ -34,7 +34,7 @@ public sealed class PipelineConfiguration
     {
         foreach (RouteFamilyDefinition family in Families)
         {
-            foreach (RouteDefinition route in family.Routes)
+            foreach (RouteDefinition route in family.AllRoutes())
             {
                 yield return route;
             }
@@ -82,6 +82,13 @@ public sealed class RouteFamilyDefinition
 
     public List<RouteDefinition> Routes { get; set; } = [];
 
+    public SemanticRouterDefinition? SemanticRouter { get; set; }
+
+    public IEnumerable<RouteDefinition> AllRoutes() =>
+        SemanticRouter is null
+            ? Routes
+            : SemanticRouter.Profiles.SelectMany(profile => profile.AllRoutes());
+
     public RouteFamilyDefinition Clone(bool resetRuntimeState = true) =>
         new()
         {
@@ -94,6 +101,33 @@ public sealed class RouteFamilyDefinition
             MaximumAttempts = MaximumAttempts,
             CooldownSeconds = CooldownSeconds,
             Routes = Routes.Select(route => route.Clone(resetRuntimeState)).ToList(),
+            SemanticRouter = SemanticRouter?.Clone(resetRuntimeState),
+        };
+}
+
+public sealed class SemanticRouterDefinition
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
+
+    public string Name { get; set; } = "SemanticRoutingChatClient";
+
+    public double ScoreThreshold { get; set; } = 0.35;
+
+    public int TopK { get; set; } = 3;
+
+    public string ScoreAggregation { get; set; } = "Mean";
+
+    public List<RouteFamilyDefinition> Profiles { get; set; } = [];
+
+    public SemanticRouterDefinition Clone(bool resetRuntimeState = true) =>
+        new()
+        {
+            Id = Id,
+            Name = Name,
+            ScoreThreshold = ScoreThreshold,
+            TopK = TopK,
+            ScoreAggregation = ScoreAggregation,
+            Profiles = Profiles.Select(profile => profile.Clone(resetRuntimeState)).ToList(),
         };
 }
 
@@ -172,6 +206,7 @@ public sealed class ChatEntry
 }
 
 public sealed record RoutingScore(
+    string Layer,
     string RouteFamilyId,
     string RouteFamilyName,
     double Score,
@@ -211,6 +246,8 @@ public sealed class RequestDebugState
     public string SelectedFamilyId { get; set; } = string.Empty;
 
     public string SelectedRoute { get; set; } = "Pending";
+
+    public string SelectedInnerRoute { get; set; } = "Pending";
 
     public string FinalRouteId { get; set; } = string.Empty;
 
