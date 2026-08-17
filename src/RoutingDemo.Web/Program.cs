@@ -1,5 +1,5 @@
 using RoutingDemo.Web.Components;
-using RoutingDemo.Web.Demo.Backend;
+using RoutingDemo.Web.Demo.Backend.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 

@@ -1,7 +1,7 @@
 using System.Numerics.Tensors;
 using Microsoft.Extensions.AI;
 
-namespace RoutingDemo.Web.Demo.Backend;
+namespace RoutingDemo.Web.Demo.Backend.Infrastructure;
 
 internal sealed class RecordingEmbeddingGenerator : IEmbeddingGenerator<string, Embedding<float>>
 {

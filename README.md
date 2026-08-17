@@ -84,9 +84,16 @@ Live provider integration is intentionally out of scope. Replacing
 - Sample `CooldownFailoverChatClient : FailoverChatClient`.
 - `MockResponsesChatClient` leaf clients backed by `MockResponsesApi`.
 
-The custom sticky and cooldown implementations live in
-`src\RoutingDemo.Web\Demo\Backend` so they can be read independently as
-extension samples.
+The backend is intentionally split into two folders:
+
+| Folder | Purpose |
+| --- | --- |
+| `Demo\Backend\Samples` | Standalone MEAI extensions. These depend only on MEAI and standard .NET abstractions. |
+| `Demo\Backend\Infrastructure` | Demo-only configuration mapping, diagnostics, deterministic embeddings, mock responses, and UI runtime state. |
+
+`CooldownFailoverChatClient` and `StickySemanticRoutingChatClient` do not
+reference `RouteDefinition`, `DemoDiagnostics`, or any Blazor/UI type. The
+infrastructure factory adapts those reusable samples to this demo.
 
 ## Scope documents
 

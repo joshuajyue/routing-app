@@ -1,7 +1,8 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Caching.Distributed;
+using RoutingDemo.Web.Demo.Backend.Samples;
 
-namespace RoutingDemo.Web.Demo.Backend;
+namespace RoutingDemo.Web.Demo.Backend.Infrastructure;
 
 public sealed class DemoPipelineFactory
 {
@@ -24,7 +25,10 @@ public sealed class DemoPipelineFactory
             configuration,
             sessionId,
             diagnostics,
-            builder.StickyClient);
+            builder.StickyClient,
+            builder.StickyRouteDefinitions,
+            builder.CooldownBindings,
+            builder.OwnedResources);
     }
 
     private sealed class PipelineBuilder
@@ -47,6 +51,13 @@ public sealed class DemoPipelineFactory
         }
 
         public StickySemanticRoutingChatClient? StickyClient { get; private set; }
+
+        public IReadOnlyDictionary<string, RouteFamilyDefinition> StickyRouteDefinitions { get; private set; } =
+            new Dictionary<string, RouteFamilyDefinition>();
+
+        public List<CooldownBinding> CooldownBindings { get; } = [];
+
+        public List<IDisposable> OwnedResources { get; } = [];
 
         public IChatClient Build()
         {
@@ -91,12 +102,17 @@ public sealed class DemoPipelineFactory
                 _configuration.ScoreAggregation == "Sum"
                     ? SemanticRoutingChatClient.ScoreAggregation.Sum
                     : SemanticRoutingChatClient.ScoreAggregation.Mean);
+            OwnedResources.Add(selector);
+            StickyRouteDefinitions = definitions;
             StickyClient = new StickySemanticRoutingChatClient(
                 clients,
-                definitions,
-                selector,
-                _cache,
-                _diagnostics);
+                async (context, cancellationToken) =>
+                {
+                    RouteFamilyDefinition selected =
+                        await selector.SelectAsync(context.Messages, cancellationToken).ConfigureAwait(false);
+                    return selected.Name;
+                },
+                _cache);
             return StickyClient;
         }
 
@@ -121,12 +137,7 @@ public sealed class DemoPipelineFactory
                 {
                     MaximumAttemptsPerRequest = family.MaximumAttempts,
                 },
-                "Cooldown" => new CooldownFailoverChatClient(
-                    clients,
-                    family.Routes,
-                    TimeSpan.FromSeconds(family.CooldownSeconds),
-                    family.MaximumAttempts,
-                    _diagnostics),
+                "Cooldown" => BuildCooldownClient(clients, family),
                 _ => clients[0],
             };
         }
@@ -178,7 +189,28 @@ public sealed class DemoPipelineFactory
         private IChatClient BuildLeaf(RouteDefinition route, string layer) =>
             new MockResponsesChatClient(route, layer, _responses, _diagnostics);
 
+        private IChatClient BuildCooldownClient(
+            IChatClient[] clients,
+            RouteFamilyDefinition family)
+        {
+            var cooldown = new CooldownFailoverChatClient(
+                clients,
+                TimeSpan.FromSeconds(family.CooldownSeconds),
+                family.MaximumAttempts);
+            for (int index = 0; index < clients.Length; index++)
+            {
+                CooldownBindings.Add(new CooldownBinding(family.Routes[index], clients[index], cooldown));
+            }
+
+            return cooldown;
+        }
+
         private static string GetResilienceName(string policy) =>
             policy == "None" ? "Single" : policy;
     }
 }
+
+internal sealed record CooldownBinding(
+    RouteDefinition Route,
+    IChatClient Client,
+    CooldownFailoverChatClient Policy);

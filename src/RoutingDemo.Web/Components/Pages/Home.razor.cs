@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.AI;
 using Microsoft.JSInterop;
 using RoutingDemo.Web.Demo;
-using RoutingDemo.Web.Demo.Backend;
+using RoutingDemo.Web.Demo.Backend.Infrastructure;
 
 namespace RoutingDemo.Web.Components.Pages;
 
@@ -1284,6 +1284,7 @@ public partial class Home
         route.PolicyDisabled = false;
         route.ConsecutiveFailures = 0;
         route.LastFailure = null;
+        _pipeline?.ResetPolicyState(route.Id);
         RecordRuntimeAction("Availability", $"{route.Name} was revived and is eligible.");
     }
 
@@ -1457,6 +1458,7 @@ public partial class Home
                 if (IsBuilt)
                 {
                     CleanExpiredStates();
+                    _pipeline?.SynchronizePolicyState();
                     await InvokeAsync(StateHasChanged);
                 }
             }

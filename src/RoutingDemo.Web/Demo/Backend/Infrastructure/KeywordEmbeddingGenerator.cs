@@ -1,7 +1,7 @@
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.AI;
 
-namespace RoutingDemo.Web.Demo.Backend;
+namespace RoutingDemo.Web.Demo.Backend.Infrastructure;
 
 internal sealed partial class KeywordEmbeddingGenerator : IEmbeddingGenerator<string, Embedding<float>>
 {

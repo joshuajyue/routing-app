@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
 
-namespace RoutingDemo.Web.Demo.Backend;
+namespace RoutingDemo.Web.Demo.Backend.Infrastructure;
 
 internal sealed class MockResponsesChatClient : IChatClient
 {

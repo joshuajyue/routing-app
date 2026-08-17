@@ -1,4 +1,4 @@
-namespace RoutingDemo.Web.Demo.Backend;
+namespace RoutingDemo.Web.Demo.Backend.Infrastructure;
 
 public sealed class MockResponsesApi
 {
