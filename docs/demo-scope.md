@@ -50,7 +50,7 @@ exclusive choices. The configurator has three independent concepts:
 | --- | --- | --- |
 | Selection | Which client should receive this request first? | Semantic match, direct single-family selection, sticky route |
 | Resilience | What should happen if that invocation fails? | None, built-in ordered failover, observable custom failover |
-| Route | What is this selectable client? | Named simulated model plus instructions and chat options |
+| Route | What is this selectable client? | Named mock response client plus instructions and chat options |
 
 A composed pipeline can therefore look like:
 
@@ -172,8 +172,9 @@ The main workspace uses a three-panel layout:
 The pipeline and debug sidebars can be hidden independently so the conversation
 can use the reclaimed space.
 
-All requests use deterministic simulated clients so the demo works without
-credentials and failure timelines remain reproducible.
+All requests run through real MEAI routing clients. Leaf model invocations use
+a deterministic mock Responses API so the demo works without credentials and
+failure timelines remain reproducible.
 
 Structural policy, model, route-order, and option changes are not edited in the
 chat workspace. Tree interaction selects runtime clients for inspection and
@@ -444,8 +445,8 @@ routing feature.
 - Tool mode and multiple-tool-call setting for the tool-placement scenario.
 
 The model catalog needs capability metadata so incompatible controls can be
-disabled with an explanation. The metadata is part of the simulator and should
-not imply live-provider capability discovery.
+disabled with an explanation. The metadata belongs to the mock response backend
+and should not imply live-provider capability discovery.
 
 Provider-specific raw options and background-response continuation are out of
 scope.
@@ -468,7 +469,7 @@ Every named route can be wrapped with deterministic demo faults:
 | Empty completed stream | Completed response with no committed output |
 | Manual cancellation | Cancellation is terminal |
 
-Faults run entirely within the simulator and never require a real provider
+Faults run in the mock response clients and never require a real provider
 outage.
 
 ### Availability versus policy health
@@ -587,7 +588,7 @@ This is a proposed structure, not approval to scaffold it yet.
 
 ### Phase 1: built-in routing playground
 
-- Deterministic simulated route factories.
+- Actual MEAI pipeline factories with deterministic mock response leaves.
 - Direct, semantic, built-in ordered failover, and composition presets.
 - Core route options.
 - Named-client diagnostics and deterministic faults.

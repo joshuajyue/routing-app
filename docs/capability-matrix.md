@@ -92,7 +92,7 @@ verified outside the main interaction.
 | Per-family resilience | Configure exactly one client for Single, or multiple clients under ordered/cooldown behavior | Family-node inspector and invariant validation | P0 |
 | Inner versus outer failure scope | Exhaust a selected family, then invoke a global emergency client outside the semantic router | Nested attempt and event timelines | P0 |
 | Route-level configured wrappers | Different instructions/options per route | Options diff | P0 |
-| One model at multiple reasoning levels | Semantic low/medium/high single-client families over one simulated model ID | Distinct routes and effective options | P0 |
+| One model at multiple reasoning levels | Real semantic low/medium/high routing over one mock model ID | Distinct routes and effective options | P0 |
 | Sticky application-session routing | Pin a broad model family after the first successful turn, keep selecting reasoning effort inside that family, and clear the session-keyed pin independently | Nested sticky/semantic tree, two score layers, and cache events | P0 |
 | Parent-owned semantic profiles | Edit simple/balanced/complex utterances on the sticky selector and low/medium/high utterances on each child semantic selector | Contextual selector inspector | P0 |
 | One-shot manual failure | Select a model leaf in the runtime tree and fail its next invocation | Selected-model health and invocation trace | P0 |

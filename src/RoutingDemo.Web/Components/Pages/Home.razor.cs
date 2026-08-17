@@ -2,8 +2,10 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.AI;
 using Microsoft.JSInterop;
 using RoutingDemo.Web.Demo;
+using RoutingDemo.Web.Demo.Backend;
 
 namespace RoutingDemo.Web.Components.Pages;
 
@@ -74,6 +76,7 @@ public partial class Home
 
     private readonly CancellationTokenSource _lifetimeCancellation = new();
     private readonly Dictionary<string, string> _stickySelections = [];
+    private DemoPipelineRuntime? _pipeline;
     private CancellationTokenSource? _requestCancellation;
     private Task? _clockTask;
     private IJSObjectReference? _composerModule;
@@ -82,6 +85,9 @@ public partial class Home
 
     [Inject]
     private IJSRuntime JSRuntime { get; set; } = null!;
+
+    [Inject]
+    private DemoPipelineFactory PipelineFactory { get; set; } = null!;
 
     private PipelineConfiguration Draft { get; set; } = new();
 
@@ -125,11 +131,7 @@ public partial class Home
             : ResolveRouteLocation(ActiveConfiguration, ActiveSelectedNodeKey);
 
     private string? StickyPinnedFamilyId =>
-        ActiveConfiguration is not null &&
-        ActiveConfiguration.SelectionPolicy == "StickySemantic" &&
-        _stickySelections.TryGetValue(SessionId, out string? familyId)
-            ? familyId
-            : null;
+        _pipeline?.PinnedRouteId;
 
     private RouteFamilyDefinition? StickyPinnedFamily =>
         StickyPinnedFamilyId is { } familyId
@@ -621,6 +623,8 @@ public partial class Home
 
         ActiveConfiguration = Draft.Clone(resetRuntimeState: true);
         SessionId = CreateSessionId();
+        _pipeline?.Dispose();
+        _pipeline = PipelineFactory.Create(ActiveConfiguration, SessionId);
         Messages.Clear();
         CurrentDebug = null;
         Prompt = string.Empty;
@@ -634,6 +638,8 @@ public partial class Home
     private void RebuildPipeline()
     {
         _requestCancellation?.Cancel();
+        _pipeline?.Dispose();
+        _pipeline = null;
         if (ActiveConfiguration is not null)
         {
             Draft = ActiveConfiguration.Clone(resetRuntimeState: true);
@@ -670,15 +676,9 @@ public partial class Home
             SessionId = SessionId,
             Prompt = prompt,
             SelectionPolicy = ActiveConfiguration.SelectionPolicy,
-            InputTokens = EstimateTokens(prompt),
         };
         CurrentDebug = debug;
         DebugTab = "Summary";
-        AddEvent(
-            debug,
-            "Routing",
-            "Request started",
-            $"{ActiveConfiguration.SelectionPolicy} selection over {ActiveConfiguration.Families.Count} stable route-family clients.");
 
         _requestCancellation = new CancellationTokenSource();
         IsSending = true;
@@ -703,75 +703,67 @@ public partial class Home
         RequestDebugState debug,
         CancellationToken cancellationToken)
     {
-        PipelineConfiguration configuration = ActiveConfiguration!;
-        RouteFamilyDefinition selectedFamily = SelectRouteFamily(configuration, prompt, debug);
-        debug.SelectedFamilyId = selectedFamily.Id;
-        debug.SelectedRoute = selectedFamily.Name;
-        debug.ResiliencePolicy = selectedFamily.SemanticRouter is null
-            ? GetResilienceDisplayName(selectedFamily.ResiliencePolicy)
-            : "Nested semantic";
-        debug.ConfiguredModel = selectedFamily.SemanticRouter is null
-            ? selectedFamily.Routes[0].ModelId
-            : selectedFamily.Name;
-        AddEvent(
-            debug,
-            "Selection",
-            "Route family selected",
-            $"{selectedFamily.Name} resolved to a {GetFamilyTargetType(selectedFamily)} target.");
-
-        var execution = new RequestExecutionContext();
-        InvocationOutcome familyOutcome = await ExecuteFamilyAsync(
-            configuration,
-            selectedFamily,
-            prompt,
-            debug,
-            execution,
-            cancellationToken);
-
-        if (familyOutcome.Kind is InvocationOutcomeKind.Succeeded or InvocationOutcomeKind.Canceled)
+        if (_pipeline is null)
         {
-            if (familyOutcome.Kind == InvocationOutcomeKind.Succeeded)
-            {
-                PinStickySelection(configuration, selectedFamily, debug);
-            }
-
-            return;
+            throw new InvalidOperationException("The routing pipeline has not been built.");
         }
 
-        if (configuration.GlobalFallbackEnabled)
+        ChatEntry? assistantMessage = null;
+        try
         {
-            AddEvent(
-                debug,
-                "Policy",
-                "Family failure propagated",
-                $"{selectedFamily.Name} was terminal in its own layer; the outer OrderedFailoverChatClient selected {configuration.GlobalFallback.Name}.");
-            InvocationOutcome globalOutcome = await InvokeRouteAsync(
-                configuration.GlobalFallback,
-                "Outer fallback",
+            await foreach (ChatResponseUpdate update in _pipeline.GetStreamingResponseAsync(
                 prompt,
                 debug,
-                execution,
-                isTerminalInLayer: true,
-                cancellationToken);
-            if (globalOutcome.Kind is InvocationOutcomeKind.Succeeded or InvocationOutcomeKind.Canceled)
+                () => new ValueTask(InvokeAsync(StateHasChanged)),
+                cancellationToken))
             {
-                return;
+                assistantMessage ??= new ChatEntry
+                {
+                    Role = "assistant",
+                    RouteName = debug.FinalRoute == "Pending" ? "Router" : debug.FinalRoute,
+                    ModelId = update.ModelId,
+                    IsPending = true,
+                };
+                if (!Messages.Contains(assistantMessage))
+                {
+                    Messages.Add(assistantMessage);
+                }
+
+                assistantMessage.RouteName =
+                    debug.FinalRoute == "Pending" ? assistantMessage.RouteName : debug.FinalRoute;
+                assistantMessage.ModelId = update.ModelId ?? assistantMessage.ModelId;
+                assistantMessage.Content += update.Text;
+                assistantMessage.IsPending = false;
+                await InvokeAsync(StateHasChanged);
+            }
+
+            if (assistantMessage is not null && debug.FinalRoute != "Pending")
+            {
+                assistantMessage.RouteName = debug.FinalRoute;
             }
         }
-
-        debug.FinalRoute = "None";
-        debug.FinalRouteId = string.Empty;
-        debug.ActualModel = "None";
-        debug.Outcome = "Failed";
-        debug.FinishReason = "Error";
-        AddEvent(debug, "Failure", "Pipeline exhausted", "No configured leaf client completed the request.");
-        Messages.Add(new ChatEntry
+        catch (OperationCanceledException)
         {
-            Role = "assistant",
-            RouteName = "Router",
-            Content = "No route could complete the request. Revive a model or rebuild the pipeline.",
-        });
-        await InvokeAsync(StateHasChanged);
+            if (assistantMessage is not null)
+            {
+                assistantMessage.IsPending = false;
+            }
+        }
+        catch (Exception)
+        {
+            if (assistantMessage is not null && string.IsNullOrEmpty(assistantMessage.Content))
+            {
+                Messages.Remove(assistantMessage);
+            }
+
+            Messages.Add(new ChatEntry
+            {
+                Role = "assistant",
+                RouteName = "Router",
+                Content = "No route could complete the request. Revive a model or rebuild the pipeline.",
+            });
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private async Task<InvocationOutcome> ExecuteFamilyAsync(
@@ -1305,13 +1297,19 @@ public partial class Home
         }
 
         Messages.Clear();
+        _pipeline?.ClearConversation();
         CurrentDebug = null;
         Prompt = string.Empty;
         DebugTab = "Summary";
     }
 
-    private void ClearStickyPin()
+    private async Task ClearStickyPin()
     {
+        if (_pipeline is not null)
+        {
+            await _pipeline.ClearStickyPinAsync();
+        }
+
         _stickySelections.Remove(SessionId);
         if (CurrentDebug is not null)
         {
@@ -2179,6 +2177,7 @@ public partial class Home
         }
 
         _requestCancellation?.Dispose();
+        _pipeline?.Dispose();
         if (_composerModule is not null)
         {
             try

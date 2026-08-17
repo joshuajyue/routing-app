@@ -1,11 +1,11 @@
 # routing-app
 
-> Status: functional UI prototype with simulated routing behavior.
+> Status: functional MEAI routing demo with a mock Responses API.
 
-A minimalist Blazor UI for exploring the extensible routing and failover APIs
-in `Microsoft.Extensions.AI`. The experience starts with one live composition
-workspace: presets and node settings mutate an always-visible client tree,
-which then segues into an interactive chat with routing diagnostics.
+A minimalist Blazor UI backed by real routing and failover clients from
+`Microsoft.Extensions.AI`. The leaf model calls use a deterministic mock
+Responses API, so the routing pipeline is genuine while generated content
+remains local and reproducible.
 
 The central product decision is that semantic routing and failover are not
 exclusive modes:
@@ -64,7 +64,7 @@ The demo is intentionally deterministic and does not require an API key.
   inner reasoning route. Configured profile order resolves keyword ties.
 - Optional whole-pipeline emergency fallback.
 - Per-route model ID, reasoning, temperature, instruction, and token controls.
-- Simulated streaming and non-streaming chat.
+- Real `IChatClient` streaming and non-streaming execution over mock responses.
 - Fail-next, timed kill, kill-until-revived, and revive controls.
 - Interactive runtime tree with health controls for the selected model client.
 - Independently collapsible pipeline and debug sidebars.
@@ -72,8 +72,21 @@ The demo is intentionally deterministic and does not require an API key.
   nested `FailoverChatClientAttempt`-shaped diagnostics.
 - Responsive, sans-serif visual system with no external UI dependency.
 
-Live provider integration is intentionally out of scope; the simulated clients
-are the final execution model for this teaching demo.
+Live provider integration is intentionally out of scope. Replacing
+`MockResponsesChatClient` is the only missing provider step.
+
+## Backend implementation
+
+`DemoPipelineFactory` builds the UI configuration into real MEAI clients:
+
+- Built-in `SemanticRoutingChatClient` and `OrderedFailoverChatClient`.
+- Sample `StickySemanticRoutingChatClient : FailoverChatClient`.
+- Sample `CooldownFailoverChatClient : FailoverChatClient`.
+- `MockResponsesChatClient` leaf clients backed by `MockResponsesApi`.
+
+The custom sticky and cooldown implementations live in
+`src\RoutingDemo.Web\Demo\Backend` so they can be read independently as
+extension samples.
 
 ## Scope documents
 

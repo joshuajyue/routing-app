@@ -1,10 +1,14 @@
 using RoutingDemo.Web.Components;
+using RoutingDemo.Web.Demo.Backend;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+builder.Services.AddDistributedMemoryCache();
+builder.Services.AddScoped<DemoPipelineFactory>();
+builder.Services.AddSingleton<MockResponsesApi>();
 
 var app = builder.Build();
 

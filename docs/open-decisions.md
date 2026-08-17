@@ -1,7 +1,7 @@
 # Open decisions
 
-The current UI prototype implements the accepted P0 composition model with
-simulated clients. The simulator is the final execution model.
+The current implementation uses real `Microsoft.Extensions.AI` routing clients
+with deterministic mock response clients at the leaves.
 
 ## P0 decisions
 
@@ -9,7 +9,7 @@ simulated clients. The simulator is the final execution model.
 | --- | --- | --- |
 | UX model | One live composition workspace with an always-visible client tree, followed by a focused chat/debug screen | Removes wizard overhead while keeping nested `IChatClient` composition explicit |
 | Initial host | .NET 10 Blazor Web App with Interactive Server rendering | Keeps the sample mostly C# and supports deterministic streaming UI updates |
-| Execution model | Deterministic simulated models and embeddings only | Makes the demo reliable, free to run, and able to reproduce exact failure boundaries |
+| Execution model | Real MEAI routing and failover over deterministic mock responses and embeddings | Makes the framework behavior genuine while keeping the demo reliable and free to run |
 | Live provider integration | Out of scope | Real credentials and provider variability do not improve the routing concepts being demonstrated |
 | Core presets | Semantic route families, nested sticky model-and-reasoning routing, direct cooldown failover, outer emergency fallback, and semantic reasoning-level routing | Covers composition, two-level semantic selection, session stickiness, health memory, and option shaping |
 | Exact attempt telemetry | Add a custom observable ordered policy derived from `FailoverChatClient` | `OrderedFailoverChatClient` is sealed and does not publish its protected attempt hook |
